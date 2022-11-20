@@ -1,0 +1,79 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+script_path=$(readlink -f "$0")
+script_dir=$(dirname "${script_path}")
+cd "${script_dir}"
+
+mkdir -p lib/_downloads
+cd lib
+
+function die {
+    echo $@
+    exit 1
+}
+
+function download {
+    description="$1"
+    extract_dir="$2"
+    filename="$3"
+    expected_size="$4"
+    url="$5"
+    expected_shasum="$6"
+    expected_mdsum="$7"
+
+    if [[ -e "${extract_dir}" ]]; then
+        echo "-- ${description} is already unpacked"
+        return
+    fi
+    
+    echo "-- ${description} is missing"
+
+    if [[ -f "_downloads/${filename}" ]]; then
+        echo "- using cached ${description} archive"
+    else
+        echo "- fetching ${description} from ${url}"
+
+        [[ -e download.tmp ]] && (rm download.tmp || die "deleting temporary file download.tmp failed")
+        curl "${url}" -L -o download.tmp || die "download failed"
+        
+        actual_size="$(wc -c download.tmp | cut -d' ' -f1)"
+        actual_shasum="$(sha256sum download.tmp | cut -d' ' -f1)"
+        actual_mdsum="$(md5sum download.tmp | cut -d' ' -f1)"
+        
+        if [[ "${actual_size}" != "${expected_size}" || "${actual_shasum}" != "${expected_shasum}" || "${actual_mdsum}" != "${expected_mdsum}" ]]; then
+            echo "Download verification failed, check download.tmp:"
+            echo " expected size ${expected_size}, got ${actual_size}"
+            echo " expected SHA256 ${expected_shasum}, got ${actual_shasum}"
+            echo " expected MD5 ${expected_mdsum}, got ${actual_mdsum}"
+            exit 1
+        fi
+        
+        mv download.tmp "_downloads/${filename}" || die "Failed to move downloaded file to cache"
+    fi
+    
+    echo "- extracting ${description} from ${filename} to ${extract_dir}"
+    mkdir "${extract_dir}" || die "Failed to create extraction directory ${extract_dir}"
+    
+    if [[ "${filename}" =~ \.zip$ ]]; then
+        unzip -d "${extract_dir}" "_downloads/${filename}" || die "Failed to unpack ${filename} to ${extract_dir}"
+    elif [[ "${filename}" =~ \.7z$ ]]; then
+        7z x -o"${extract_dir}" "_downloads/${filename}" || die "Failed to unpack ${filename} to ${extract_dir}"
+    else
+        die "Unhandled file suffix: ${filename}"
+    fi
+    
+    # if there was a single directory on root level, pull it up
+    subs="$(find "${extract_dir}" -mindepth 1 -maxdepth 1)"
+    if [[ "$(nl <<<"$subs" | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')" == "1" && -d "${subs}" ]]; then
+        [[ ! -e "_tmp" ]] || die "unable to pull up directory, _tmp exists already"
+        mv "${subs}" _tmp || die "failed to pull directory ${subs} up (1)"
+        rmdir "${extract_dir}" || die "failed to pull directory ${subs} up (2)"
+        mv _tmp "${extract_dir}" || die "failed to pull directory ${subs} up (3)"
+    fi
+    
+    echo "- ${description} has been unpacked"
+}
+
+download "LibVNCServer (LibVNCClient)" VNC LibVNCServer-0.9.13.zip 671682 https://github.com/LibVNC/libvncserver/archive/refs/tags/LibVNCServer-0.9.13.zip d209d70998a9b98f9120eeb82df7a17767796c477eaa8297e0a55856a977c54f f2e1df666b95c2b59916d6603da26ccd

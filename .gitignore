@@ -1,0 +1,14 @@
+\#*#
+*~
+
+*.old
+*.bak
+
+*.nocommit
+*.nocommit.*
+
+build
+lib
+release
+
+user.cfg

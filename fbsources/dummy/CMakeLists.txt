@@ -1,0 +1,24 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.24)
+PROJECT(fbsource_dummy)
+
+SET(CMAKE_BUILD_TYPE Debug)
+
+SET(FRAMEBUFFET_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../../framework/release/include)
+SET(FRAMEBUFFET_LIB ${CMAKE_CURRENT_SOURCE_DIR}/../../framework/release/lib)
+
+SET(FBPLUGIN_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dummy.c
+)
+
+# configure plugin
+IF(UNIX)
+    ADD_LIBRARY(fbsource_dummy SHARED ${FBPLUGIN_SOURCES})
+ELSEIF(WIN32)
+    ADD_LIBRARY(fbsource_dummy MODULE ${FBPLUGIN_SOURCES})
+ENDIF()
+
+TARGET_INCLUDE_DIRECTORIES(fbsource_dummy PUBLIC ${FRAMEBUFFET_INCLUDE})
+
+# compiled output file name
+SET_TARGET_PROPERTIES(fbsource_dummy PROPERTIES PREFIX "")
+SET_TARGET_PROPERTIES(fbsource_dummy PROPERTIES OUTPUT_NAME "fbsource_dummy")
