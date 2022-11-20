@@ -216,6 +216,10 @@ typedef struct {
   void *data;
 } fbsource_module_instance_entry_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 framebuffet_t* framebuffet_init();
 int framebuffet_destroy(framebuffet_t *framebuffet);
 
@@ -233,5 +237,9 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instanc
 fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id);
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token);
 int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, unsigned int last_token);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
