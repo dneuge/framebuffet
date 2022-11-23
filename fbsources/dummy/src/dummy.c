@@ -27,7 +27,7 @@ typedef struct {
   int complete_buffer;
 } fbsource_dummy_t;
 
-int generate(void *data) {
+static int generate(void *data) {
   fbsource_dummy_t *instance = data;
   
   int gen = 0;
@@ -105,7 +105,7 @@ int generate(void *data) {
   }
 }
 
-int dummy_create(framebuffet_t *framebuffet, void **data) {
+static int dummy_create(framebuffet_t *framebuffet, void **data) {
   fbsource_dummy_t *instance = malloc(sizeof(fbsource_dummy_t));
   if (instance == NULL) {
     return FBERROR_MEMORY_ALLOCATION;
@@ -141,7 +141,7 @@ static int stop_generator_thread(fbsource_dummy_t *instance) {
   return out_error;
 }
 
-int dummy_destroy(void *data) {
+static int dummy_destroy(void *data) {
   fbsource_dummy_t *instance = data;
   
   if (instance == NULL) {
@@ -179,7 +179,7 @@ static int get_config_int(fbsource_dummy_t *instance, char *key, int default_val
   return atoi(entry->value);
 }
 
-int dummy_configure_module(void *data, fbcollections_map_entry_t *config) {
+static int dummy_configure_module(void *data, fbcollections_map_entry_t *config) {
   fbsource_dummy_t *instance = data;
 
   stop_generator_thread(instance);
@@ -250,18 +250,18 @@ int dummy_configure_module(void *data, fbcollections_map_entry_t *config) {
   return success ? FBERROR_NONE : FBERROR_UNSPECIFIC;
 }
 
-int dummy_get_num_buffers(void *data) {
+static int dummy_get_num_buffers(void *data) {
   // this module only generates a single buffer
   return 1;
 }
 
-int dummy_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+static int dummy_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
   fbsource_dummy_t *instance = data;
   *config = fbcollections_map_copy_with_payloads(instance->source_config);
   return FBERROR_NONE;
 }
 
-fbsource_buffer_config_t* dummy_get_buffer_configuration(void *data, int buffer_id) {
+static fbsource_buffer_config_t* dummy_get_buffer_configuration(void *data, int buffer_id) {
   fbsource_dummy_t *instance = data;
   
   if (buffer_id != 0) {
@@ -290,7 +290,7 @@ fbsource_buffer_config_t* dummy_get_buffer_configuration(void *data, int buffer_
   return out;
 }
 
-int dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token) {
+static int dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token) {
   fbsource_dummy_t *instance = data;
   int out_error = FBERROR_NONE;
   
@@ -316,7 +316,7 @@ int dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned lon
   return out_error;
 }
 
-int dummy_has_update(void *data, int buffer_id, unsigned int last_token) {
+static int dummy_has_update(void *data, int buffer_id, unsigned int last_token) {
   if (buffer_id != 0) {
     return FALSE;
   }
