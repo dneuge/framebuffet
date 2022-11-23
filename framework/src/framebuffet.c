@@ -4,13 +4,14 @@
 
 #include "framebuffet.h"
 
-static int load_module(fbsource_module_registration_t *registration, char *file_path);
-static int apply_module_descriptor(fbsource_module_descriptor_t *module_descriptor, fbsource_module_registration_t *registration);
+static int load_module(fbsource_module_descriptor_t **module_descriptor, char *file_path);
 
 #ifdef TARGET_UNIX
 #include <dlfcn.h>
 
-static int load_module(fbsource_module_registration_t *registration, char *file_path) {
+static int load_module(fbsource_module_descriptor_t **module_descriptor, char *file_path) {
+  *module_descriptor = NULL;
+  
   //void *lib = dlopen(file_path, RTLD_LOCAL | RTLD_LAZY);
   void *lib = dlopen(file_path, RTLD_GLOBAL | RTLD_NOW);
   char *err_s = dlerror();
@@ -26,14 +27,15 @@ static int load_module(fbsource_module_registration_t *registration, char *file_
     return FBERROR_UNSPECIFIC;
   }
 
-  fbsource_module_descriptor_t *module_descriptor = dlsym(lib, module_descriptor_symbol);
+  *module_descriptor = dlsym(lib, module_descriptor_symbol);
   err_s = dlerror();
-  if (module_descriptor == NULL || err_s != NULL) {
+  if (*module_descriptor == NULL || err_s != NULL) {
     printf("failed to get module descriptor %s from %s: %s\n", module_descriptor_symbol, file_path, err_s); // TODO: use logger
+    *module_descriptor = NULL;
     return FBERROR_UNSPECIFIC;
   }
 
-  return apply_module_descriptor(module_descriptor, registration);
+  return FBERROR_NONE;
 }
 
 #endif
@@ -97,12 +99,23 @@ static int apply_module_descriptor(fbsource_module_descriptor_t *module_descript
 }
 
 int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
+  fbsource_module_descriptor_t *module_descriptor = NULL;
+  
+  int err = load_module(&module_descriptor, file_path);
+  if (err != FBERROR_NONE) {
+    return err;
+  }
+
+  return framebuffet_register_module(framebuffet, module_descriptor);
+}
+
+int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t *module_descriptor) {
   fbsource_module_registration_t *registration = malloc(sizeof(fbsource_module_registration_t));
   if (registration == NULL) {
     return FBERROR_MEMORY_ALLOCATION;
   }
 
-  int err = load_module(registration, file_path);
+  int err = apply_module_descriptor(module_descriptor, registration);
   if (err != FBERROR_NONE) {
     return err;
   }
