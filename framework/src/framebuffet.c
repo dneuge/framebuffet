@@ -5,6 +5,7 @@
 #include "framebuffet.h"
 
 static int load_module(fbsource_module_registration_t *registration, char *file_path);
+static int apply_module_descriptor(fbsource_module_descriptor_t *module_descriptor, fbsource_module_registration_t *registration);
 
 #ifdef TARGET_UNIX
 #include <dlfcn.h>
@@ -32,27 +33,9 @@ static int load_module(fbsource_module_registration_t *registration, char *file_
     return FBERROR_UNSPECIFIC;
   }
 
-  if (module_descriptor->api_version != FRAMEBUFFET_MODULE_API_VERSION) {
-    printf("module has been compiled with an incompatible API version %d\n", module_descriptor->api_version); // TODO: use logger
-    return FBERROR_UNSPECIFIC;
-  }
-  
-  char *name = module_descriptor->name;
-  char *license = module_descriptor->license;
-
-  fbsource_module_t *module = malloc(sizeof(fbsource_module_t));
-  if (module == NULL) {
-    return FBERROR_MEMORY_ALLOCATION;
-  }
-
-  memcpy(module, &module_descriptor->ops, sizeof(fbsource_module_t));
-
-  registration->module = module;
-  registration->name = name;
-  registration->license = license;
-
-  return FBERROR_NONE;
+  return apply_module_descriptor(module_descriptor, registration);
 }
+
 #endif
 
 framebuffet_t* framebuffet_init() {
@@ -83,6 +66,34 @@ framebuffet_t* framebuffet_init() {
 int framebuffet_destroy(framebuffet_t *framebuffet) {
   // FIXME: implement (stop and destroy all module instances and the framework instance)
   return FBERROR_UNSPECIFIC;
+}
+
+static int apply_module_descriptor(fbsource_module_descriptor_t *module_descriptor, fbsource_module_registration_t *registration) {
+  if (module_descriptor->api_version != FRAMEBUFFET_MODULE_API_VERSION) {
+    printf("module has been compiled with an incompatible API version %d\n", module_descriptor->api_version); // TODO: use logger
+    return FBERROR_UNSPECIFIC;
+  }
+  
+  char *name = module_descriptor->name;
+  char *license = module_descriptor->license;
+
+  if (name == NULL || license == NULL) {
+    printf("module is missing name or license\n"); // TODO: use logger
+    return FBERROR_UNSPECIFIC;
+  }
+
+  fbsource_module_t *module = malloc(sizeof(fbsource_module_t));
+  if (module == NULL) {
+    return FBERROR_MEMORY_ALLOCATION;
+  }
+
+  memcpy(module, &module_descriptor->ops, sizeof(fbsource_module_t));
+
+  registration->module = module;
+  registration->name = name;
+  registration->license = license;
+
+  return FBERROR_NONE;
 }
 
 int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
