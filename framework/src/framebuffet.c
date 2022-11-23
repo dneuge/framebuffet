@@ -70,14 +70,14 @@ int framebuffet_destroy(framebuffet_t *framebuffet) {
   return FBERROR_UNSPECIFIC;
 }
 
-static int apply_module_descriptor(fbsource_module_descriptor_t *module_descriptor, fbsource_module_registration_t *registration) {
-  if (module_descriptor->api_version != FRAMEBUFFET_MODULE_API_VERSION) {
-    printf("module has been compiled with an incompatible API version %d\n", module_descriptor->api_version); // TODO: use logger
+static int apply_module_descriptor(fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
+  if (module_descriptor.api_version != FRAMEBUFFET_MODULE_API_VERSION) {
+    printf("module has been compiled with an incompatible API version %d\n", module_descriptor.api_version); // TODO: use logger
     return FBERROR_UNSPECIFIC;
   }
   
-  char *name = module_descriptor->name;
-  char *license = module_descriptor->license;
+  char *name = module_descriptor.name;
+  char *license = module_descriptor.license;
 
   if (name == NULL || license == NULL) {
     printf("module is missing name or license\n"); // TODO: use logger
@@ -89,7 +89,7 @@ static int apply_module_descriptor(fbsource_module_descriptor_t *module_descript
     return FBERROR_MEMORY_ALLOCATION;
   }
 
-  memcpy(module, &module_descriptor->ops, sizeof(fbsource_module_t));
+  memcpy(module, &module_descriptor.ops, sizeof(fbsource_module_t));
 
   registration->module = module;
   registration->name = name;
@@ -106,10 +106,10 @@ int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
     return err;
   }
 
-  return framebuffet_register_module(framebuffet, module_descriptor);
+  return framebuffet_register_module(framebuffet, *module_descriptor);
 }
 
-int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t *module_descriptor) {
+int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor) {
   fbsource_module_registration_t *registration = malloc(sizeof(fbsource_module_registration_t));
   if (registration == NULL) {
     return FBERROR_MEMORY_ALLOCATION;
