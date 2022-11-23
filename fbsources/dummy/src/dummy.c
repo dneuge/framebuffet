@@ -325,7 +325,7 @@ int dummy_has_update(void *data, int buffer_id, unsigned int last_token) {
   return (last_token != instance->frame_token);
 }
 
-const fbsource_module_t module = {
+static const fbsource_module_t dummy_module = {
     ._create = dummy_create,
     ._destroy = dummy_destroy,
     .configure_module = dummy_configure_module,
@@ -336,10 +336,4 @@ const fbsource_module_t module = {
     .has_update = dummy_has_update
 };
 
-fbsource_module_t dummy_init() {
-  return module;
-}
-
-FBSOURCE_MODULE_NAME("Dummy")
-FBSOURCE_MODULE_LICENSE(FBMODULE_LICENSE_MIT)
-FBSOURCE_MODULE_INIT(dummy_init)
+FBSOURCE_MODULE_DESCRIPTOR(dummy, "Dummy", FBMODULE_LICENSE_MIT, dummy_module)

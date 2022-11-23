@@ -17,38 +17,35 @@ static int load_module(fbsource_module_registration_t *registration, char *file_
     printf("loading module from %s failed: %s\n", file_path, err_s); // TODO: use logger
     return FBERROR_UNSPECIFIC;
   }
-  
-  char *name = dlsym(lib, "_fbsource_module_name");
-  err_s = dlerror();
-  if (name == NULL || err_s != NULL) {
-    printf("failed to get module name from %s: %s\n", file_path, err_s); // TODO: use logger
-  }
-  
-  char *license = dlsym(lib, "_fbsource_module_license");
-  err_s = dlerror();
-  if (license == NULL || err_s != NULL) {
-    printf("failed to get module license from %s: %s\n", file_path, err_s); // TODO: use logger
-  }
-  
-  fbsource_init_f *init = dlsym(lib, "_fbsource_module_init");
-  err_s = dlerror();
-  if (init == NULL || err_s != NULL) {
-    printf("failed to get module initialization from %s: %s\n", file_path, err_s); // TODO: use logger
-  }
 
-  if (name == NULL || license == NULL || init == NULL) {
+  char *module_descriptor_symbol = dlsym(lib, "_fbsource_module_descriptor_symbol");
+  err_s = dlerror();
+  if (module_descriptor_symbol == NULL || err_s != NULL) {
+    printf("failed to get module descriptor symbol name from %s: %s\n", file_path, err_s); // TODO: use logger
     return FBERROR_UNSPECIFIC;
   }
+
+  fbsource_module_descriptor_t *module_descriptor = dlsym(lib, module_descriptor_symbol);
+  err_s = dlerror();
+  if (module_descriptor == NULL || err_s != NULL) {
+    printf("failed to get module descriptor %s from %s: %s\n", module_descriptor_symbol, file_path, err_s); // TODO: use logger
+    return FBERROR_UNSPECIFIC;
+  }
+
+  if (module_descriptor->api_version != FRAMEBUFFET_MODULE_API_VERSION) {
+    printf("module has been compiled with an incompatible API version %d\n", module_descriptor->api_version); // TODO: use logger
+    return FBERROR_UNSPECIFIC;
+  }
+  
+  char *name = module_descriptor->name;
+  char *license = module_descriptor->license;
 
   fbsource_module_t *module = malloc(sizeof(fbsource_module_t));
   if (module == NULL) {
     return FBERROR_MEMORY_ALLOCATION;
   }
 
-  printf("initializing\n"); // DEBUG
-  fbsource_module_t module_tmp = (*init)();
-  printf("... done\n"); // DEBUG
-  memcpy(module, &module_tmp, sizeof(fbsource_module_t));
+  memcpy(module, &module_descriptor->ops, sizeof(fbsource_module_t));
 
   registration->module = module;
   registration->name = name;

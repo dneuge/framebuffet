@@ -1,6 +1,8 @@
 #ifndef FRAMEBUFFET_H
 #define FRAMEBUFFET_H
 
+#include <stdint.h>
+
 #include "fbcollections.h"
 
 // license identification constants
@@ -179,6 +181,8 @@ typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destinati
  */
 typedef int (*fbsource_has_update_f)(void *data, int buffer_id, unsigned int last_token);
 
+#define FRAMEBUFFET_MODULE_API_VERSION 1
+
 typedef struct {
   // functions to be implemented by modules
   // see type descriptions for details
@@ -192,17 +196,25 @@ typedef struct {
   fbsource_has_update_f has_update;
 } fbsource_module_t;
 
+typedef struct {
+  uint8_t api_version;
+  char *name;
+  char *license;
+  fbsource_module_t ops;
+} fbsource_module_descriptor_t;
+
 typedef fbsource_module_t (*fbsource_init_f)(void);
 
-#define _FBSOURCE_MODULE_NAME _fbsource_module_name
-#define FBSOURCE_MODULE_NAME(name) ;const char _FBSOURCE_MODULE_NAME[]=name;
-
-#define _FBSOURCE_MODULE_LICENSE _fbsource_module_license
-#define FBSOURCE_MODULE_LICENSE(license) ;const char _FBSOURCE_MODULE_LICENSE[]=license;
-
-#define _FBSOURCE_MODULE_INIT _fbsource_module_init
-#define FBSOURCE_MODULE_INIT(module_init) ;const fbsource_init_f _FBSOURCE_MODULE_INIT=module_init;
-
+#define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
+  static char _fbsource_module_name__##descriptorid[]=modulename; \
+  static char _fbsource_module_license__##descriptorid[]=modulelicense; \
+  const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
+  const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
+    .api_version = FRAMEBUFFET_MODULE_API_VERSION, \
+    .name = _fbsource_module_name__##descriptorid, \
+    .license = _fbsource_module_license__##descriptorid, \
+    .ops = moduleops \
+  };
 
 typedef struct {
   fbsource_module_t *module;
