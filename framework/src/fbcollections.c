@@ -124,7 +124,7 @@ int fbcollections_map_put(fbcollections_map_entry_t *entry, fbcollections_map_en
 
 int fbcollections_map_put_and_free_old_entry_with_payloads(fbcollections_map_entry_t *entry, void *key, unsigned long key_size, void *value, unsigned long value_size) {
   fbcollections_map_entry_t *old_entry;
-  if (!fbcollections_map_put(entry, &old_entry, key, key_size, value, value_size)) {
+  if (fbcollections_map_put(entry, &old_entry, key, key_size, value, value_size) < 0) {
     // memory allocation failed, we need to indicate an error
     return -1;
   }
