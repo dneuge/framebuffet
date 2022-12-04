@@ -264,6 +264,10 @@ static rfbClient* create_rfb_client(fbsource_libvnc_t *instance) {
     client->readTimeout = instance->read_timeout_seconds;
     client->serverHost = copy_string(instance->hostname);
     client->serverPort = instance->port;
+
+    client->appData.shareDesktop = RFBBOOL_TRUE;
+    client->appData.viewOnly = RFBBOOL_TRUE;
+    client->appData.enableJPEG = RFBBOOL_FALSE; // TODO: make configurable
     
     mtx_unlock(&instance->mutex);
 
