@@ -47,15 +47,15 @@
 
 
 typedef struct {
-  fbcollections_map_entry_t *modules;
-  fbcollections_map_entry_t *config;
-  fbcollections_map_entry_t *sources;
+    fbcollections_map_entry_t *modules;
+    fbcollections_map_entry_t *config;
+    fbcollections_map_entry_t *sources;
 } framebuffet_t;
 
 typedef struct {
-  unsigned int width;
-  unsigned int height;
-  unsigned long size;
+    unsigned int width;
+    unsigned int height;
+    unsigned long size;
 } fbsource_buffer_config_t;
 
 typedef int fbsource_token_t;
@@ -184,48 +184,48 @@ typedef int (*fbsource_has_update_f)(void *data, int buffer_id, unsigned int las
 #define FRAMEBUFFET_MODULE_API_VERSION 1
 
 typedef struct {
-  // functions to be implemented by modules
-  // see type descriptions for details
-  fbsource_create_f _create;
-  fbsource_destroy_f _destroy;
-  fbsource_configure_module_f configure_module;
-  fbsource_get_num_buffers_f get_num_buffers;
-  fbsource_get_module_config_f get_module_configuration;
-  fbsource_get_buffer_config_f get_buffer_configuration;
-  fbsource_copy_latest_frame_f copy_latest_frame;
-  fbsource_has_update_f has_update;
+    // functions to be implemented by modules
+    // see type descriptions for details
+    fbsource_create_f _create;
+    fbsource_destroy_f _destroy;
+    fbsource_configure_module_f configure_module;
+    fbsource_get_num_buffers_f get_num_buffers;
+    fbsource_get_module_config_f get_module_configuration;
+    fbsource_get_buffer_config_f get_buffer_configuration;
+    fbsource_copy_latest_frame_f copy_latest_frame;
+    fbsource_has_update_f has_update;
 } fbsource_module_t;
 
 typedef struct {
-  uint8_t api_version;
-  char *name;
-  char *license;
-  fbsource_module_t ops;
+    uint8_t api_version;
+    char *name;
+    char *license;
+    fbsource_module_t ops;
 } fbsource_module_descriptor_t;
 
 typedef fbsource_module_t (*fbsource_init_f)(void);
 
 #define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
-  static char _fbsource_module_name__##descriptorid[]=modulename; \
-  static char _fbsource_module_license__##descriptorid[]=modulelicense; \
-  const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
-  const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
-    .api_version = FRAMEBUFFET_MODULE_API_VERSION, \
-    .name = _fbsource_module_name__##descriptorid, \
-    .license = _fbsource_module_license__##descriptorid, \
-    .ops = moduleops \
-  };
+    static char _fbsource_module_name__##descriptorid[]=modulename;     \
+    static char _fbsource_module_license__##descriptorid[]=modulelicense; \
+    const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
+    const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
+        .api_version = FRAMEBUFFET_MODULE_API_VERSION,                  \
+        .name = _fbsource_module_name__##descriptorid,                  \
+        .license = _fbsource_module_license__##descriptorid,            \
+        .ops = moduleops                                                \
+    };
 
 typedef struct {
-  fbsource_module_t *module;
-  char *name;
-  char *license;
+    fbsource_module_t *module;
+    char *name;
+    char *license;
 } fbsource_module_registration_t;
 
 typedef struct {
-  fbsource_module_registration_t *module;
-  char *instance_name;
-  void *data;
+    fbsource_module_registration_t *module;
+    char *instance_name;
+    void *data;
 } fbsource_module_instance_entry_t;
 
 #ifdef __cplusplus

@@ -2,14 +2,14 @@
 #define FRAMEBUFFET_COLLECTIONS_H
 
 typedef struct {
-  void *_prev;
-  void *_next;
+    void *_prev;
+    void *_next;
   
-  void *key;
-  unsigned long key_size;
+    void *key;
+    unsigned long key_size;
 
-  void *value;
-  unsigned long value_size;
+    void *value;
+    unsigned long value_size;
 } fbcollections_map_entry_t;
 
 #ifdef __cplusplus
