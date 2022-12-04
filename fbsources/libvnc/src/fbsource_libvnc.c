@@ -15,7 +15,7 @@
 
 #define VNC_BITS_PER_SAMPLE 8
 #define VNC_SAMPLES_PER_PIXEL 3
-#define VNC_BYTES_PER_PIXEL 3 /* TODO: documentation says we need a "multiple of eight" and comes out at 4 = 32 bits instead of 3 = 24 bits */
+#define VNC_BYTES_PER_PIXEL 4 /* 4 = 32 bits, setting 3 = 24 bits leads to "Rect too large" error messages */
 
 /* VNC states are essentially controlling a statemachine:
  * Controlling threads read the actual_connection_state and make requests by setting wanted_connection_state.
@@ -55,6 +55,7 @@ typedef struct {
     unsigned int width;
     unsigned int height;
     unsigned long buffer_size;
+    unsigned int num_pixels;
 
     char *hostname;
     int port;
@@ -119,7 +120,7 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
     
     printf("vnc_malloc_frame_buffer\n"); // DEBUG
 
-    if (client->width <= 0 || client->height <= 0 || client->format.bitsPerPixel != 3 * 8) {
+    if (client->width <= 0 || client->height <= 0 || client->format.bitsPerPixel != 4 * 8) {
         printf("bad format requested by libvncclient: width=%d, height=%d, bitsPerPixel=%d\n", client->width, client->height, client->format.bitsPerPixel); // DEBUG
         return RFBBOOL_FALSE;
     }
@@ -146,11 +147,13 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
     instance->width = client->width;
     instance->height = client->height;
     instance->buffer_size = instance->width * instance->height * 3;
+    instance->num_pixels = instance->width * instance->height;
+    int client_buffer_size = instance->num_pixels * 4;
 
     // allocate buffers
     instance->buffers[0] = (unsigned char*) malloc(instance->buffer_size);
     instance->buffers[1] = (unsigned char*) malloc(instance->buffer_size);
-    instance->client_buffer = (unsigned char*) malloc(instance->buffer_size);
+    instance->client_buffer = (unsigned char*) malloc(client_buffer_size);
 
     // reset on error (buffers remain unallocated if input is wrong)
     if (!instance->buffers[0] || !instance->buffers[1] || !instance->client_buffer) {
@@ -172,6 +175,7 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
         instance->width = 0;
         instance->height = 0;
         instance->buffer_size = 0;
+        instance->num_pixels = 0;
     }
 
     bool success = (instance->buffer_size > 0);
@@ -190,26 +194,40 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
 static void vnc_finished_frame_buffer_update(rfbClient *client) {
     fbsource_libvnc_t *instance = rfbClientGetClientData(client, NULL);
 
-    printf("vnc_finished_frame_buffer_update\n"); // DEBUG
+    //printf("vnc_finished_frame_buffer_update\n"); // DEBUG
+
+    // Locking should not be necessary until we switch the buffer because
+    // the only way to resize buffers is through the client event loop which
+    // is currently busy calling this code.
     
-    if (mtx_lock(&instance->mutex) != thrd_success) {
-        return;
-    }
-
-    // TODO: check if holding the mutex during memcpy has a noticeable performance hit and find a better way if it has
-    // TODO: double-buffering on fbsource doesn't really make sense if we hold the mutex?
-
     int work_buffer = (instance->complete_buffer + 1) % 2;
     unsigned char *buffer = instance->buffers[work_buffer];
-    if (buffer) {
-        memcpy(buffer, instance->client_buffer, instance->buffer_size);
+    unsigned char *client_buffer = instance->client_buffer;
+    int numPixels = instance->num_pixels;
+    if (!buffer) {
+        printf("vnc_finished_frame_buffer_update: no buffer!\n"); // DEBUG
+    } else {
+        // Unfortunately 24bpp does not work, so we need to read 32bpp and skip
+        // every 4th byte...
+        int in = 0;
+        int out = 0;
+        for (unsigned int i=0; i<numPixels; i++) {
+            buffer[out++] = client_buffer[in++]; // Red
+            buffer[out++] = client_buffer[in++]; // Green
+            buffer[out++] = client_buffer[in++]; // Blue
+            in++;                                // Fill Byte
+        }
+
+        if (mtx_lock(&instance->mutex) != thrd_success) {
+            printf("vnc_finished_frame_buffer_update: failed to get lock; dropping frame\n"); // DEBUG
+            return;
+        }
+
         instance->complete_buffer = work_buffer;
         instance->frame_token++;
-    } else {
-        printf("vnc_finished_frame_buffer_update: no buffer!\n"); // DEBUG
+        
+        mtx_unlock(&instance->mutex); // TODO: how to handle an error?
     }
-
-    mtx_unlock(&instance->mutex); // TODO: how to handle an error?
 }
 
 static char* vnc_get_password(rfbClient *client) {
@@ -306,9 +324,11 @@ static int client_loop(void *data) {
                 instance->actual_connection_state = VNC_STATE_CONNECTED;
             } else {
                 printf("client loop: connection failed\n"); // DEBUG
+                
+                // unfortunately client has been freed by rfbInitClient at this point...
+                client = NULL;
 
-                // unfortunately client has been freed by rfbInitClient at this point,
-                // we need to fully reinitialize
+                // ... so we need to fully reinitialize
                 if (mtx_lock(&instance->mutex) == thrd_success) {
                     if (instance->wanted_connection_state == VNC_STATE_CLEARED) {
                         instance->wanted_connection_state = VNC_STATE_CONNECTED;
