@@ -50,6 +50,7 @@ function build_libvncclient {
     cd build
     cmake \
         -DWITH_JPEG=OFF \
+        -DWITH_PNG=OFF \
         -DWITH_SDL=OFF \
         -DWITH_GTK=OFF \
         -DWITH_LIBSSH2=OFF \
@@ -63,8 +64,13 @@ function build_libvncclient {
         -DWITH_SASL=OFF \
         -DWITH_EXAMPLES=OFF \
         -DBUILD_SHARED_LIBS=$1 \
+        -DCMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
         .. || die "VNC CMake failed"
     make -j$num_jobs || die "VNC make failed"
+    
+    # to disable global find module database; see https://stackoverflow.com/questions/71613328/how-to-limit-find-package-search-to-cmake-module-path-by-default
+    #   -DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=TRUE \
+    #   -DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=FALSE \
     
     if [[ "$1" == "ON" ]]; then
         # dynamically linked
