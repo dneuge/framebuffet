@@ -157,6 +157,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     void *data = NULL;
     int err = registration->module->_create(framebuffet, &data);
     if (err != FBERROR_NONE) {
+        free(instance);
         return err;
     }
 
