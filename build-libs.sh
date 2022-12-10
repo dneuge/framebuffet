@@ -25,7 +25,21 @@ cd "${script_dir}/lib/VNC"
 [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
 mkdir build || die "VNC mkdir failed"
 cd build
-cmake .. || die "VNC CMake failed"
+cmake \
+  -DWITH_JPEG=0 \
+  -DWITH_SDL=0 \
+  -DWITH_GTK=0 \
+  -DWITH_LIBSSH2=0 \
+  -DWITH_GNUTLS=0 \
+  -DWITH_OPENSSL=0 \
+  -DWITH_SYSTEMD=0 \
+  -DWITH_GCRYPT=0 \
+  -DWITH_FFMPEG=0 \
+  -DWITH_TIGHTVNC_FILETRANSFER=0 \
+  -DWITH_WEBSOCKETS=0 \
+  -DWITH_SASL=0 \
+  -DWITH_EXAMPLES=0 \
+  .. || die "VNC CMake failed"
 make -j$num_jobs || die "VNC make failed"
 cp -a libvncclient.so* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
 mkdir "${script_dir}/lib/_build/rfb"
