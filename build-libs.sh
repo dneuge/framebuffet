@@ -17,34 +17,47 @@ mkdir -p lib/_build
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 num_jobs=$(( $num_cpus + 1 ))
 
-# TODO: reduce the amount of dependencies of libvncclient
-# TODO: link libvncclient statically
+function build_libvncclient {
+    cd "${script_dir}/lib/VNC"
+    [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
+    mkdir build || die "VNC mkdir failed"
+    cd build
+    cmake \
+        -DWITH_JPEG=OFF \
+        -DWITH_SDL=OFF \
+        -DWITH_GTK=OFF \
+        -DWITH_LIBSSH2=OFF \
+        -DWITH_GNUTLS=OFF \
+        -DWITH_OPENSSL=OFF \
+        -DWITH_SYSTEMD=OFF \
+        -DWITH_GCRYPT=OFF \
+        -DWITH_FFMPEG=OFF \
+        -DWITH_TIGHTVNC_FILETRANSFER=OFF \
+        -DWITH_WEBSOCKETS=OFF \
+        -DWITH_SASL=OFF \
+        -DWITH_EXAMPLES=OFF \
+        -DBUILD_SHARED_LIBS=$1 \
+        .. || die "VNC CMake failed"
+    make -j$num_jobs || die "VNC make failed"
+    
+    if [[ "$1" == "ON" ]]; then
+        # dynamically linked
+        cp -a libvncclient.so* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+        mkdir -p "${script_dir}/lib/_build/rfb"
+        cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (2)"
+        cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (3)"
+    else
+        # statically linked
+        cp -a libvncclient.a* "${script_dir}/lib/_build/" || die "VNC copy failed"
+    fi
+}
 
-echo "==== Building libvncclient ===="
-cd "${script_dir}/lib/VNC"
-[[ -d build ]] && (rm -Rf build || die "VNC clean failed")
-mkdir build || die "VNC mkdir failed"
-cd build
-cmake \
-  -DWITH_JPEG=0 \
-  -DWITH_SDL=0 \
-  -DWITH_GTK=0 \
-  -DWITH_LIBSSH2=0 \
-  -DWITH_GNUTLS=0 \
-  -DWITH_OPENSSL=0 \
-  -DWITH_SYSTEMD=0 \
-  -DWITH_GCRYPT=0 \
-  -DWITH_FFMPEG=0 \
-  -DWITH_TIGHTVNC_FILETRANSFER=0 \
-  -DWITH_WEBSOCKETS=0 \
-  -DWITH_SASL=0 \
-  -DWITH_EXAMPLES=0 \
-  .. || die "VNC CMake failed"
-make -j$num_jobs || die "VNC make failed"
-cp -a libvncclient.so* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
-mkdir "${script_dir}/lib/_build/rfb"
-cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (2)"
-cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (3)"
+echo "==== Building libvncclient (dynamically linked) ===="
+build_libvncclient ON
+echo
+
+echo "==== Building libvncclient (statically linked) ===="
+build_libvncclient OFF
 echo
 
 echo Lib build complete.
