@@ -76,4 +76,5 @@ function download {
     echo "- ${description} has been unpacked"
 }
 
+download "zlib" zlib zlib-1.2.13.zip 1631786 https://zlib.net/zlib1213.zip d233fca7cf68db4c16dc5287af61f3cd01ab62495224c66639ca3da537701e42 9cb22b7d2aa208b61f5850c04bebda58
 download "LibVNCServer (LibVNCClient)" VNC LibVNCServer-0.9.13.zip 671682 https://github.com/LibVNC/libvncserver/archive/refs/tags/LibVNCServer-0.9.13.zip d209d70998a9b98f9120eeb82df7a17767796c477eaa8297e0a55856a977c54f f2e1df666b95c2b59916d6603da26ccd

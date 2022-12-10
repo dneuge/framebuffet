@@ -17,6 +17,19 @@ mkdir -p lib/_build
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 num_jobs=$(( $num_cpus + 1 ))
 
+echo "==== Building zlib ===="
+cd "${script_dir}/lib/zlib"
+[[ -d build ]] && (rm -Rf build || die "zlib clean failed")
+mkdir build || die "zlib mkdir failed"
+cd build
+cmake .. || die "zlib CMake failed"
+make -j$num_jobs || die "zlib make failed"
+cp -a libz.so* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
+cp -a libz.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
+cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (3)"
+cp -a ../zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (4)"
+echo
+
 function build_libvncclient {
     cd "${script_dir}/lib/VNC"
     [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
