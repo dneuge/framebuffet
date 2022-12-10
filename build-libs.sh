@@ -30,6 +30,19 @@ cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (3)"
 cp -a ../zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (4)"
 echo
 
+echo "==== Building LZO ===="
+cd "${script_dir}/lib/lzo"
+[[ -d build ]] && (rm -Rf build || die "lzo clean failed")
+mkdir build || die "lzo mkdir failed"
+cd build
+cmake -DENABLE_SHARED=ON .. || die "lzo CMake failed"
+make -j$num_jobs || die "lzo make failed"
+cp -a liblzo2.so* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
+cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (2)"
+mkdir -p "${script_dir}/lib/_build/lzo"
+cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (3)"
+echo
+
 function build_libvncclient {
     cd "${script_dir}/lib/VNC"
     [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
