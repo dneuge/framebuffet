@@ -19,6 +19,12 @@ echo
 echo "=== Building dummy source ==="
 cd "${script_dir}/fbsources/dummy"
 ./build.sh || die "Building dummy source failed"
+echo
+
+echo "=== Building libvnc source ==="
+cd "${script_dir}/fbsources/libvnc"
+./build.sh || die "Building libvnc source failed"
+echo
 
 echo "=== Building source viewer ==="
 cd "${script_dir}/tools/fbsourceviewer"
