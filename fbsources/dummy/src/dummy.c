@@ -11,6 +11,8 @@ typedef short bool;
 
 typedef struct {
     mtx_t mutex;
+
+    void *ext_instance_ref;
   
     bool stop_generator;
     thrd_t generator_thread;
@@ -100,12 +102,14 @@ static int generate(void *data) {
 
         mtx_unlock(&instance->mutex); // TODO: how to handle an error?
 
+        framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
+
         // aim for ~30FPS
         thrd_sleep(&(struct timespec){.tv_nsec=30000000}, NULL); 
     }
 }
 
-static int dummy_create(framebuffet_t *framebuffet, void **data) {
+static int dummy_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     fbsource_dummy_t *instance = malloc(sizeof(fbsource_dummy_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
@@ -118,7 +122,11 @@ static int dummy_create(framebuffet_t *framebuffet, void **data) {
         return FBERROR_UNSPECIFIC;
     }
 
+    instance->ext_instance_ref = instance_ref;
+
     *data = instance;
+
+    framebuffet_publish_num_buffers(instance_ref, 1);
     
     return FBERROR_NONE;
 }

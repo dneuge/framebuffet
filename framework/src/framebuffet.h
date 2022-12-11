@@ -2,6 +2,7 @@
 #define FRAMEBUFFET_H
 
 #include <stdint.h>
+#include <threads.h>
 
 #include "fbcollections.h"
 
@@ -68,10 +69,11 @@ typedef int fbsource_token_t;
  * Do not call directly when using the framework!
  * 
  * @param framebuffet the framework instance that requested instantiation
+ * @param instance_ref reference pointer used by the framework; do not read or manipulate, only store and return to framework where indicated
  * @param data module instance data to be allocated and set by the module as needed, will be provided on further calls addressing this instance; initially NULL
  * @return error code, use FBERROR defines
  */
-typedef int (*fbsource_create_f)(framebuffet_t *framebuffet, void **data);
+typedef int (*fbsource_create_f)(framebuffet_t *framebuffet, void *instance_ref, void **data);
 
 /**
  * Will be called by the framework to shutdown and deallocate a module instance.
@@ -222,16 +224,35 @@ typedef struct {
     char *license;
 } fbsource_module_registration_t;
 
+
+typedef struct {
+    // always lock the mutex and back off if destruction_pending
+    uint8_t destruction_pending;
+
+    fbsource_token_t token;
+    mtx_t mutex;
+    cnd_t wait;
+} fbsource_module_instance_frame_update_t;
+
 typedef struct {
     fbsource_module_registration_t *module;
     char *instance_name;
     void *data;
+
+    mtx_t mutex;
+    fbsource_module_instance_frame_update_t *frame_updates;
+    int num_buffers;
 } fbsource_module_instance_entry_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// API meant only for fbsource modules to publish updates to framework
+int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
+int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
+
+// API for general use
 framebuffet_t* framebuffet_init();
 int framebuffet_destroy(framebuffet_t *framebuffet);
 
@@ -251,6 +272,8 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instanc
 fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id);
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
+int framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
+int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 
 #ifdef __cplusplus
 }

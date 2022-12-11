@@ -167,10 +167,15 @@ int main(int argc, char *argv[]) {
             break;
         }
 
+        framebuffet_wait_for_update_micros(source, buffer_id, token, 100000);
+        //framebuffet_wait_for_update(source, buffer_id, token);
+
+        /*
         // go back to sleep if there is no new frame
         if (!framebuffet_has_update(source, buffer_id, token)) {
             continue;
         }
+        */
 
         // get the new frame
         res = framebuffet_copy_latest_frame(source, buffer, buffer_size, buffer_id, &token);

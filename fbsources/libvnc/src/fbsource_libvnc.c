@@ -49,6 +49,8 @@ typedef uint8_t vnc_state_t;
 typedef struct {
     mtx_t mutex;
 
+    void *ext_instance_ref;
+
     fbsource_token_t frame_token;
     fbcollections_map_entry_t* source_config;
 
@@ -227,6 +229,8 @@ static void vnc_finished_frame_buffer_update(rfbClient *client) {
         instance->frame_token++;
         
         mtx_unlock(&instance->mutex); // TODO: how to handle an error?
+
+        framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
     }
 }
 
@@ -438,7 +442,7 @@ static int client_loop(void *data) {
     instance->actual_connection_state = VNC_STATE_TERMINATED;
 }
 
-static int fblibvnc_create(framebuffet_t *framebuffet, void **data) {
+static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     rfbClientLog = rfbClientErr = printf; // FIXME: add some logger, if possible scoped to instance (is that possible?)
     rfbEnableClientLogging = RFBBOOL_TRUE;
     
@@ -460,6 +464,7 @@ static int fblibvnc_create(framebuffet_t *framebuffet, void **data) {
         return FBERROR_UNSPECIFIC;
     }
 
+    instance->ext_instance_ref = instance_ref;
     instance->wanted_connection_state = VNC_STATE_CLEARED;
     instance->actual_connection_state = VNC_STATE_DISCONNECTED;
     instance->connect_timeout_seconds = VNC_DEFAULT_CONNECT_TIMEOUT_SECONDS;
@@ -473,6 +478,8 @@ static int fblibvnc_create(framebuffet_t *framebuffet, void **data) {
     }
     
     *data = instance;
+
+    framebuffet_publish_num_buffers(instance_ref, 1);
     
     return FBERROR_NONE;
 }
