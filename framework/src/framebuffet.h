@@ -263,7 +263,7 @@ int framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
 int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor);
 
 int framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
-//fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);
+fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);
 
 int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
 int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);

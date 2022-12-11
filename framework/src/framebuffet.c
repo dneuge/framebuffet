@@ -300,6 +300,8 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
 }
 
 int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
+    // FIXME: lock framebuffet instance with a mutex
+    
     int instance_name_size = strlen(instance_name) + 1;
   
     fbcollections_map_entry_t *registration_entry = fbcollections_map_find_key(framebuffet->modules, module_name, strlen(module_name) + 1);
@@ -345,6 +347,17 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     *source_instance = instance;
 
     return FBERROR_NONE;
+}
+
+fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
+    // FIXME: lock framebuffet instance with a mutex
+
+    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, strlen(instance_name) + 1);
+    if (instance_entry && instance_entry->value) {
+        return instance_entry->value;
+    }
+
+    return NULL;
 }
 
 int framebuffet_configure_source_instance(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t *config) {
