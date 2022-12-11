@@ -26,6 +26,11 @@ cd "${script_dir}/fbsources/libvnc"
 ./build.sh || die "Building libvnc source failed"
 echo
 
+echo "=== Building crop source ==="
+cd "${script_dir}/fbsources/crop"
+./build.sh || die "Building crop source failed"
+echo
+
 echo "=== Building source viewer ==="
 cd "${script_dir}/tools/fbsourceviewer"
 ./build.sh || die "Building source viewer failed"
