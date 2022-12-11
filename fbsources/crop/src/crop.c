@@ -158,6 +158,11 @@ static int generate(void *data) {
             source_buffer = NULL;
         }
     }
+
+    // release any remaining memory we hold
+    if (source_buffer) {
+        free(source_buffer);
+    }
 }
 
 static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
