@@ -190,10 +190,10 @@ fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_i
     return source_instance->module->module->get_buffer_configuration(source_instance->data, buffer_id);
 }
 
-int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token) {
+int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     return source_instance->module->module->copy_latest_frame(source_instance->data, destination, buffer_size, buffer_id, token);
 }
 
-int framebuffet_has_update(fbsource_module_instance_entry_t* source_instance, int buffer_id, unsigned int last_token) {
+int framebuffet_has_update(fbsource_module_instance_entry_t* source_instance, int buffer_id, fbsource_token_t last_token) {
     return source_instance->module->module->has_update(source_instance->data, buffer_id, last_token);
 }

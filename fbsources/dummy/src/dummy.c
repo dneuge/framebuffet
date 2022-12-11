@@ -16,7 +16,7 @@ typedef struct {
     thrd_t generator_thread;
     bool has_generator_thread;
 
-    unsigned int frame_token;
+    fbsource_token_t frame_token;
     fbcollections_map_entry_t* source_config;
 
     unsigned int width;
@@ -290,7 +290,7 @@ static fbsource_buffer_config_t* dummy_get_buffer_configuration(void *data, int 
     return out;
 }
 
-static int dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token) {
+static int dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_dummy_t *instance = data;
     int out_error = FBERROR_NONE;
   
@@ -316,7 +316,7 @@ static int dummy_copy_latest_frame(void *data, unsigned char *destination, unsig
     return out_error;
 }
 
-static int dummy_has_update(void *data, int buffer_id, unsigned int last_token) {
+static int dummy_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     if (buffer_id != 0) {
         return FALSE;
     }

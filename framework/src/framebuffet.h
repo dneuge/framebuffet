@@ -166,7 +166,7 @@ typedef fbsource_buffer_config_t* (*fbsource_get_buffer_config_f)(void *data, in
  * @param token can be used to perform a light-weight check if a new frame is available before invoking this function
  * @return error code, see FBERROR defines
  */
-typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token);
+typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 
 /**
  * Checks if an updated frame is available.
@@ -179,7 +179,7 @@ typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destinati
  * @param last_token token last received from copy operation
  * @return non-zero if an updated frame is available, zero if not
  */
-typedef int (*fbsource_has_update_f)(void *data, int buffer_id, unsigned int last_token);
+typedef int (*fbsource_has_update_f)(void *data, int buffer_id, fbsource_token_t last_token);
 
 #define FRAMEBUFFET_MODULE_API_VERSION 1
 
@@ -249,8 +249,8 @@ int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *sourc
 
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance);
 fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id);
-int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, unsigned int *token);
-int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, unsigned int last_token);
+int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 
 #ifdef __cplusplus
 }
