@@ -43,13 +43,26 @@ mkdir -p "${script_dir}/lib/_build/lzo"
 cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (3)"
 echo
 
+echo "==== Building libjpeg-turbo ===="
+cd "${script_dir}/lib/libjpeg-turbo"
+[[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
+mkdir build || die "libjpeg-turbo mkdir failed"
+cd build
+cmake -DENABLE_SHARED=ON .. || die "libjpeg-turbo CMake failed"
+make -j$num_jobs || die "libjpeg-turbo make failed"
+cp -a libjpeg.so* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
+cp -a libjpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
+cp -a libturbojpeg.so* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
+cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
+cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
+echo
+
 function build_libvncclient {
     cd "${script_dir}/lib/VNC"
     [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
     mkdir build || die "VNC mkdir failed"
     cd build
     cmake \
-        -DWITH_JPEG=OFF \
         -DWITH_PNG=OFF \
         -DWITH_SDL=OFF \
         -DWITH_GTK=OFF \

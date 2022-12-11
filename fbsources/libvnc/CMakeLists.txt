@@ -24,8 +24,8 @@ IF(UNIX)
     # FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
     # NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?
     # https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
-    ADD_CUSTOM_TARGET(fbsource_libvnc_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:fbsource_libvnc_static> "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/libz.a" "${LIB_BUILD}/libvncclient.a")
-    #ADD_CUSTOM_TARGET(fbsource_libvnc_static_complete ALL COMMAND ${CMAKE_C_ARCHIVE_CREATE} fbsource_libvnc_complete.${CMAKE_STATIC_LIBRARY_SUFFIX} $<TARGET_FILE:fbsource_libvnc_static> "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/libz.a" "${LIB_BUILD}/libvncclient.a")
+    ADD_CUSTOM_TARGET(fbsource_libvnc_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:fbsource_libvnc_static> "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/libz.a" "${LIB_BUILD}/libjpeg.a" "${LIB_BUILD}/libturbojpeg.a" "${LIB_BUILD}/libvncclient.a")
+    #ADD_CUSTOM_TARGET(fbsource_libvnc_static_complete ALL COMMAND ${CMAKE_C_ARCHIVE_CREATE} fbsource_libvnc_complete.${CMAKE_STATIC_LIBRARY_SUFFIX} $<TARGET_FILE:fbsource_libvnc_static> "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/libz.a" "${LIB_BUILD}/libjpeg.a" "${LIB_BUILD}/libturbojpeg.a" "${LIB_BUILD}/libvncclient.a")
 ELSEIF(WIN32)
     ADD_LIBRARY(fbsource_libvnc MODULE ${FBPLUGIN_SOURCES})
 ENDIF()
