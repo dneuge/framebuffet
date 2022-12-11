@@ -33,6 +33,6 @@ make -j$num_jobs || die "make failed"
 ## COPY
 mkdir -p "${release_dir}" || die "Failed to create release directory lib"
 cp -a fbsource_libvnc.so "${release_dir}/" || die "Failed to copy Linux shared library to release directory"
-#cp -a fbsource_dummy.a "${release_dir}/" || die "Failed to copy Linux static library to release directory"
+cp -a fbsource_libvnc.a "${release_dir}/" || die "Failed to copy Linux static library to release directory"
 
 echo Build complete.
