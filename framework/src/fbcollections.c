@@ -91,6 +91,8 @@ fbcollections_map_entry_t* fbcollections_map_find_key(fbcollections_map_entry_t 
 int fbcollections_map_put(fbcollections_map_entry_t *entry, fbcollections_map_entry_t **old_entry, void *key, unsigned long key_size, void *value, unsigned long value_size) {
     // NOTE: we actually need to accept zero-length keys as we need to free the value later
 
+    *old_entry = NULL;
+
     fbcollections_map_entry_t* new = fbcollections_map_create();
     if (new == NULL) {
         // memory allocation failed, we need to indicate an error and must not continue
@@ -123,7 +125,7 @@ int fbcollections_map_put(fbcollections_map_entry_t *entry, fbcollections_map_en
 }
 
 int fbcollections_map_put_and_free_old_entry_with_payloads(fbcollections_map_entry_t *entry, void *key, unsigned long key_size, void *value, unsigned long value_size) {
-    fbcollections_map_entry_t *old_entry;
+    fbcollections_map_entry_t *old_entry = NULL;
     if (fbcollections_map_put(entry, &old_entry, key, key_size, value, value_size) < 0) {
         // memory allocation failed, we need to indicate an error
         return -1;
@@ -154,7 +156,7 @@ void fbcollections_map_free_entry_and_payloads(fbcollections_map_entry_t *entry)
 }
 
 void fbcollections_map_free_map_and_payloads(fbcollections_map_entry_t *entry) {
-    fbcollections_map_entry_t *prev;
+    fbcollections_map_entry_t *prev = NULL;
 
     if (entry == NULL) {
         return;
