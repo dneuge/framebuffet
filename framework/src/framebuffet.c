@@ -531,11 +531,24 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
 
     // register to known sources
     FBLOG_TRACE("recording source \"%s\", size=%ld", instance_name, instance_name_size);
-    fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t));
-    *source_instance = instance;
+    if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
+        mtx_unlock(&framebuffet->mutex);
+        FBLOG_WARN("source \"%s\" failed to register", instance_name);
+        err = registration->module->_destroy(data);
+        data = NULL;
+        if (err != FBERROR_NONE) {
+            FBLOG_ERROR("source \"%s\" failed deconstruction with %d", err);
+            return FBERROR_UNSPECIFIC;
+        }
+        free(instance->instance_name);
+        free(instance->log_prefix);
+        free(instance);
+        return FBERROR_UNSPECIFIC;
+    }
 
     mtx_unlock(&framebuffet->mutex);
     
+    *source_instance = instance;
     FBLOG_INFO("registered source \"%s\"", instance_name);
 
     return FBERROR_NONE;
