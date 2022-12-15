@@ -441,6 +441,15 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
 
     FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
+    // copy instance_name for use as map key
+    char *key = malloc(instance_name_size);
+    if (!key) {
+        FBLOG_WARN("failed to copy instance name for source instantiation");
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+    memcpy(key, instance_name, instance_name_length);
+    key[instance_name_length] = 0;
+
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for source instantiation");
         free(key);
@@ -451,16 +460,18 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     if (registration_entry == NULL) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("registration entry not found for module \"%s\"", module_name);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
   
     fbsource_module_registration_t *registration = registration_entry->value;
 
     // module instances must be unique per name within framebuffet instance
-    fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
+    fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, key, instance_name_size);
     if (existing_source_entry != NULL) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" has already been defined", instance_name);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
 
@@ -468,6 +479,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     fbsource_module_instance_entry_t *instance = malloc(sizeof(fbsource_module_instance_entry_t));
     if (instance == NULL) {
         mtx_unlock(&framebuffet->mutex);
+        free(key);
         return FBERROR_MEMORY_ALLOCATION;
     }
     memset(instance, 0, sizeof(fbsource_module_instance_entry_t));
@@ -480,6 +492,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     if (!instance->instance_name) {
         mtx_unlock(&framebuffet->mutex);
         free(instance);
+        free(key);
         return FBERROR_MEMORY_ALLOCATION;
     }
     
@@ -496,6 +509,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         mtx_unlock(&framebuffet->mutex);
         free(instance->instance_name);
         free(instance);
+        free(key);
         return FBERROR_MEMORY_ALLOCATION;
     }
 
@@ -512,6 +526,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         free(instance->instance_name);
         free(instance->log_prefix);
         free(instance);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
 
@@ -525,24 +540,27 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         free(instance->instance_name);
         free(instance->log_prefix);
         free(instance);
+        free(key);
         return err;
     }
     instance->data = data;
 
     // register to known sources
     FBLOG_TRACE("recording source \"%s\", size=%ld", instance_name, instance_name_size);
-    if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
+    if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, key, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" failed to register", instance_name);
         err = registration->module->_destroy(data);
         data = NULL;
         if (err != FBERROR_NONE) {
             FBLOG_ERROR("source \"%s\" failed deconstruction with %d", err);
+            free(key);
             return FBERROR_UNSPECIFIC;
         }
         free(instance->instance_name);
         free(instance->log_prefix);
         free(instance);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
 
