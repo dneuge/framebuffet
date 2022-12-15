@@ -131,6 +131,10 @@ typedef struct {
     fbcollections_map_entry_t *config;
     fbcollections_map_entry_t *sources;
 
+    // this root-level mutex is only used to protect main data structures,
+    // not for frame updates or logging
+    mtx_t mutex;
+
     fblog_receiver_f log_receiver;
     fblog_level_t minimum_log_level;
 } framebuffet_t;

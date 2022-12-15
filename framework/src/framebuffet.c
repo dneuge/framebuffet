@@ -156,12 +156,16 @@ int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t 
 
 framebuffet_t* framebuffet_init() {
     framebuffet_t *out = malloc(sizeof(framebuffet_t));
-
     if (!out) {
         return NULL;
     }
 
     memset(out, 0, sizeof(framebuffet_t));
+
+    if (mtx_init(&out->mutex, mtx_plain | mtx_recursive) != thrd_success) {
+        free(out);
+        return NULL;
+    }
 
     out->minimum_log_level = FBLOG_DEFAULT_MIN_LOG_LEVEL;
     
@@ -178,6 +182,7 @@ framebuffet_t* framebuffet_init() {
     fbcollections_map_free_map_and_payloads(out->modules);
     fbcollections_map_free_map_and_payloads(out->config);
     fbcollections_map_free_map_and_payloads(out->sources);
+    mtx_destroy(&out->mutex);
     free(out);
   
     return NULL;
@@ -397,23 +402,33 @@ int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
 }
 
 int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor) {
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex for module registration");
+        return FBERROR_UNSPECIFIC;
+    }
+    
     fbsource_module_registration_t *registration = malloc(sizeof(fbsource_module_registration_t));
     if (registration == NULL) {
+        mtx_unlock(&framebuffet->mutex);
         return FBERROR_MEMORY_ALLOCATION;
     }
 
     int err = apply_module_descriptor(framebuffet, module_descriptor, registration);
     if (err != FBERROR_NONE) {
+        mtx_unlock(&framebuffet->mutex);
         return err;
     }
 
     int name_size = strlen(registration->name) + 1;
     fbcollections_map_entry_t *existing = fbcollections_map_find_key(framebuffet->modules, registration->name, name_size);
     if (existing != NULL) {
+        mtx_unlock(&framebuffet->mutex);
         return FBERROR_UNSPECIFIC;
     }
   
     fbcollections_map_put(framebuffet->modules, &existing, registration->name, name_size, registration, sizeof(fbsource_module_registration_t));
+    
+    mtx_unlock(&framebuffet->mutex);
 
     FBLOG_INFO("registered source module \"%s\" (license: %s)", registration->name, registration->license);
 
@@ -421,15 +436,20 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
 }
 
 int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
-    // FIXME: lock framebuffet instance with a mutex
-
     int instance_name_length = strlen(instance_name);
     int instance_name_size = instance_name_length + 1;
 
     FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex for source instantiation");
+        free(key);
+        return FBERROR_UNSPECIFIC;
+    }
+
     fbcollections_map_entry_t *registration_entry = fbcollections_map_find_key(framebuffet->modules, module_name, strlen(module_name) + 1);
     if (registration_entry == NULL) {
+        mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("registration entry not found for module \"%s\"", module_name);
         return FBERROR_UNSPECIFIC;
     }
@@ -439,6 +459,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     // module instances must be unique per name within framebuffet instance
     fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
     if (existing_source_entry != NULL) {
+        mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" has already been defined", instance_name);
         return FBERROR_UNSPECIFIC;
     }
@@ -446,6 +467,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     // create basic module instance entry
     fbsource_module_instance_entry_t *instance = malloc(sizeof(fbsource_module_instance_entry_t));
     if (instance == NULL) {
+        mtx_unlock(&framebuffet->mutex);
         return FBERROR_MEMORY_ALLOCATION;
     }
     memset(instance, 0, sizeof(fbsource_module_instance_entry_t));
@@ -456,6 +478,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     // copy instance name
     instance->instance_name = malloc(instance_name_size);
     if (!instance->instance_name) {
+        mtx_unlock(&framebuffet->mutex);
         free(instance);
         return FBERROR_MEMORY_ALLOCATION;
     }
@@ -470,6 +493,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         + instance_name_length;
     instance->log_prefix = malloc(instance->log_prefix_length + 1);
     if (!instance->log_prefix) {
+        mtx_unlock(&framebuffet->mutex);
         free(instance->instance_name);
         free(instance);
         return FBERROR_MEMORY_ALLOCATION;
@@ -483,6 +507,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
 
     // initialize mutex
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
+        mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("failed to initialize mutex for source instance \"%s\"", instance_name);
         free(instance->instance_name);
         free(instance->log_prefix);
@@ -496,6 +521,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     int err = registration->module->_create(framebuffet, (void*) instance, &data);
     FBLOG_TRACE("constructor call for \"%s\", instance name \"%s\" finished with %d, %p", module_name, instance_name, err, data);
     if (err != FBERROR_NONE) {
+        mtx_unlock(&framebuffet->mutex);
         free(instance->instance_name);
         free(instance->log_prefix);
         free(instance);
@@ -507,15 +533,25 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t));
     *source_instance = instance;
 
+    mtx_unlock(&framebuffet->mutex);
+    
     FBLOG_INFO("registered source \"%s\"", instance_name);
 
     return FBERROR_NONE;
 }
 
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
-    // FIXME: lock framebuffet instance with a mutex
+    size_t instance_name_size = strlen(instance_name) + 1;
+    
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex for source lookup");
+        return NULL;
+    }
+    
+    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
 
-    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, strlen(instance_name) + 1);
+    mtx_unlock(&framebuffet->mutex);
+
     if (instance_entry && instance_entry->value) {
         return instance_entry->value;
     }
