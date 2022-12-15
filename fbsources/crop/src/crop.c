@@ -57,13 +57,17 @@ static int generate(void *data) {
 
     int res;
 
+    FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
+    
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // source may not be immediately available, wait until it has been created
         while (!instance->stop_generator) {
+            FBLOG_TRACE(instance->ext_instance_ref, "searching source instance \"%s\"", instance->source_name);
             source_instance = framebuffet_get_source_instance(instance->framebuffet, instance->source_name);
             if (source_instance) {
                 int source_num_buffers = framebuffet_get_num_buffers(source_instance);
+                FBLOG_TRACE(instance->ext_instance_ref, "source instance found, reports %d buffers", source_num_buffers);
                 if (source_num_buffers >= instance->source_buffer_id) {
                     fbsource_buffer_config_t *source_buffer_config = framebuffet_get_buffer_configuration(source_instance, instance->source_buffer_id);
                     source_width = source_buffer_config->width;
@@ -71,29 +75,38 @@ static int generate(void *data) {
                     source_buffer_size = source_buffer_config->size;
                     free(source_buffer_config);
 
+                    FBLOG_TRACE(instance->ext_instance_ref, "source reports width=%u, height=%u, buffer_size=%lu", source_width, source_height, source_buffer_size);
+
                     bool has_required_dimensions = (source_width >= min_source_width && source_height >= min_source_height);
                     if (has_required_dimensions) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "found source buffer with required dimensions");
                         break;
                     }
+
+                    FBLOG_DEBUG(instance->ext_instance_ref, "source buffer is too small");
                 }
             }
             
+            FBLOG_TRACE(instance->ext_instance_ref, "source instance has not been found yet, waiting...");
             source_instance = NULL;
-            
             thrd_sleep(&wait_for_source, NULL);
         }
 
         if (!source_instance) {
             // configuration loop aborted without completing
             // this should only happen when the thread should terminate, so abort as well
+            FBLOG_DEBUG(instance->ext_instance_ref, "search loop aborted, terminating");
             break;
         }
 
         source_buffer = malloc(source_buffer_size);
         if (!source_buffer) {
             // out of memory (or something like that); there's nothing we can do but terminate
+            FBLOG_WARN(instance->ext_instance_ref, "failed to allocate source buffer, terminating");
             break;
         }
+
+        FBLOG_INFO(instance->ext_instance_ref, "source acquired, starting frame updates");
 
         memset(source_buffer, 0, source_buffer_size);
         got_source_token = FALSE;
@@ -103,6 +116,8 @@ static int generate(void *data) {
         unsigned int source_line_bytes = source_width * 3;
         unsigned int line_copy_count = instance->width * 3;
 
+        FBLOG_DEBUG(instance->ext_instance_ref, "wanted(width=%d, height=%d, x=%d, y=%d) source(width=%d, height=%d) => source_line_bytes=%d, line_copy_count=%d", instance->width, instance->height, instance->x, instance->y, source_width, source_height, source_line_bytes, line_copy_count);
+        
         while (!instance->stop_generator) {
             // get our target buffer to work on
             int work_buffer = (instance->complete_buffer + 1) % 2;
@@ -116,6 +131,7 @@ static int generate(void *data) {
                 res = framebuffet_wait_for_update_micros(source_instance, instance->source_buffer_id, source_token, wait_for_update_micros);
                 if (res != FBERROR_NONE && res != FBERROR_NO_FRAME) {
                     // something went wrong that requires reinitialization
+                    FBLOG_WARN(instance->ext_instance_ref, "waiting for an update failed with error %d, reinitializing", res);
                     break;
                 }
             }
@@ -124,6 +140,7 @@ static int generate(void *data) {
             res = framebuffet_copy_latest_frame(source_instance, source_buffer, source_buffer_size, instance->source_buffer_id, &source_token);
             if (res != FBERROR_NONE) {
                 // something went wrong that requires reinitialization
+                FBLOG_WARN(instance->ext_instance_ref, "copy from source failed with error %d, reinitializing", res);
                 break;
             }
             
@@ -141,6 +158,7 @@ static int generate(void *data) {
             // mark buffer as complete
             if (mtx_lock(&instance->mutex) != thrd_success) {
                 // just drop the frame if we cannot get hold of our mutex
+                FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
                 continue;
             }
 
@@ -154,6 +172,7 @@ static int generate(void *data) {
 
         // if we got here we are shutting down or reinitializing and need to release the source buffer
         if (source_buffer) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "releasing source buffer for reinitialization");
             free(source_buffer);
             source_buffer = NULL;
         }
@@ -161,8 +180,11 @@ static int generate(void *data) {
 
     // release any remaining memory we hold
     if (source_buffer) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "releasing source buffer for termination");
         free(source_buffer);
     }
+
+    FBLOG_INFO(instance->ext_instance_ref, "source worker thread terminated");
 }
 
 static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
@@ -276,6 +298,8 @@ static int get_config_int(fbsource_crop_t *instance, char *key, int default_valu
 static int crop_configure_module(void *data, fbcollections_map_entry_t *config) {
     fbsource_crop_t *instance = data;
 
+    FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
+
     stop_generator_thread(instance);
   
     if (mtx_lock(&instance->mutex) != thrd_success) {
@@ -349,7 +373,7 @@ static int crop_configure_module(void *data, fbcollections_map_entry_t *config) 
             return FBERROR_UNSPECIFIC;
         }
     }
-  
+
     return success ? FBERROR_NONE : FBERROR_UNSPECIFIC;
 }
 
