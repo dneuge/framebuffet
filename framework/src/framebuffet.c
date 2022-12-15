@@ -530,6 +530,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     instance->data = data;
 
     // register to known sources
+    FBLOG_TRACE("recording source \"%s\", size=%ld", instance_name, instance_name_size);
     fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t));
     *source_instance = instance;
 
@@ -542,6 +543,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
 
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
     size_t instance_name_size = strlen(instance_name) + 1;
+    FBLOG_TRACE("framebuffet_get_source_instance instance_name=\"%s\", size=%lu", instance_name, instance_name_size);
     
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for source lookup");
@@ -551,6 +553,8 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
 
     mtx_unlock(&framebuffet->mutex);
+    
+    FBLOG_TRACE("framebuffet_get_source_instance got entry %p for \"%s\", value %p", instance_entry, instance_name, (instance_entry ? instance_entry->value : NULL));
 
     if (instance_entry && instance_entry->value) {
         return instance_entry->value;
