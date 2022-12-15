@@ -120,10 +120,10 @@ static char* copy_string(char* source) {
 static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
     fbsource_libvnc_t *instance = rfbClientGetClientData(client, NULL);
     
-    printf("vnc_malloc_frame_buffer\n"); // DEBUG
+    FBLOG_TRACE(instance->ext_instance_ref, "vnc_malloc_frame_buffer");
 
     if (client->width <= 0 || client->height <= 0 || client->format.bitsPerPixel != 4 * 8) {
-        printf("bad format requested by libvncclient: width=%d, height=%d, bitsPerPixel=%d\n", client->width, client->height, client->format.bitsPerPixel); // DEBUG
+        FBLOG_WARN(instance->ext_instance_ref, "bad format requested by libvncclient: width=%d, height=%d, bitsPerPixel=%d", client->width, client->height, client->format.bitsPerPixel);
         return RFBBOOL_FALSE;
     }
 
@@ -182,10 +182,10 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
 
     bool success = (instance->buffer_size > 0);
     if (success) {
-        printf("vnc_malloc_frame_buffer: success\n"); // DEBUG
+        FBLOG_TRACE(instance->ext_instance_ref, "vnc_malloc_frame_buffer: success");
         client->frameBuffer = instance->client_buffer;
     } else {
-        printf("vnc_malloc_frame_buffer: failed\n"); // DEBUG
+        FBLOG_TRACE(instance->ext_instance_ref, "vnc_malloc_frame_buffer: failed");
     }
 
     mtx_unlock(&instance->mutex);
@@ -196,7 +196,7 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
 static void vnc_finished_frame_buffer_update(rfbClient *client) {
     fbsource_libvnc_t *instance = rfbClientGetClientData(client, NULL);
 
-    //printf("vnc_finished_frame_buffer_update\n"); // DEBUG
+    //FBLOG_TRACE(instance->ext_instance_ref, "vnc_finished_frame_buffer_update");
 
     // Locking should not be necessary until we switch the buffer because
     // the only way to resize buffers is through the client event loop which
@@ -207,7 +207,7 @@ static void vnc_finished_frame_buffer_update(rfbClient *client) {
     unsigned char *client_buffer = instance->client_buffer;
     int numPixels = instance->num_pixels;
     if (!buffer) {
-        printf("vnc_finished_frame_buffer_update: no buffer!\n"); // DEBUG
+        FBLOG_WARN(instance->ext_instance_ref, "vnc_finished_frame_buffer_update: no buffer!");
     } else {
         // Unfortunately 24bpp does not work, so we need to read 32bpp and skip
         // every 4th byte...
@@ -221,7 +221,7 @@ static void vnc_finished_frame_buffer_update(rfbClient *client) {
         }
 
         if (mtx_lock(&instance->mutex) != thrd_success) {
-            printf("vnc_finished_frame_buffer_update: failed to get lock; dropping frame\n"); // DEBUG
+            FBLOG_WARN(instance->ext_instance_ref, "vnc_finished_frame_buffer_update: failed to get lock; dropping frame");
             return;
         }
 
@@ -259,7 +259,7 @@ static rfbClient* create_rfb_client(fbsource_libvnc_t *instance) {
     rfbClientSetClientData(client, NULL, instance);
 
     if (mtx_lock(&instance->mutex) != thrd_success || !instance->hostname || instance->port <= 0) {
-        printf("create_rfb_client: failed\n"); // DEBUG
+        FBLOG_WARN(instance->ext_instance_ref, "create_rfb_client: failed");
         destroy_client(client);
         return NULL;
     }
@@ -287,18 +287,18 @@ static int client_loop(void *data) {
     
     while (true) {
         wanted_state = instance->wanted_connection_state;
-        //printf("client loop, before: actual=%d, wanted=%d\n", instance->actual_connection_state, wanted_state); // DEBUG
+        FBLOG_TRACE(instance->ext_instance_ref, "client loop, before: actual=%d, wanted=%d", instance->actual_connection_state, wanted_state);
 
         // handle requested state changes
         if (wanted_state != VNC_STATE_CLEARED) {
-            printf("client loop, state transition wanted: actual=%d, wanted=%d\n", instance->actual_connection_state, wanted_state); // DEBUG
+            FBLOG_DEBUG(instance->ext_instance_ref, "client loop, state transition wanted: actual=%d, wanted=%d", instance->actual_connection_state, wanted_state);
             if (wanted_state == VNC_STATE_TERMINATED) {
                 // client thread is asked to terminate
-                printf("client loop terminates\n"); // DEBUG
+                FBLOG_DEBUG(instance->ext_instance_ref, "client loop terminates");
                 break;
             } else if (wanted_state == VNC_STATE_DISCONNECTED) {
                 // we should disconnect
-                printf("client loop disconnects\n"); // DEBUG
+                FBLOG_INFO(instance->ext_instance_ref, "client loop disconnects");
                 destroy_client(client);
                 client = NULL;
                 instance->actual_connection_state = VNC_STATE_DISCONNECTED;
@@ -306,15 +306,15 @@ static int client_loop(void *data) {
                 // we should (re)connect
                 if (client) {
                     // we may still be connected, disconnect first
-                    printf("client loop disconnects for reconnect\n"); // DEBUG
+                    FBLOG_INFO(instance->ext_instance_ref, "client loop disconnects for reconnect");
                     destroy_client(client);
                 }
                 
-                printf("client loop initializes connection\n"); // DEBUG
+                FBLOG_DEBUG(instance->ext_instance_ref, "client loop initializes connection");
                 client = create_rfb_client(instance);
 
                 if (!client) {
-                    printf("client failed to initialize\n"); // DEBUG
+                    FBLOG_WARN(instance->ext_instance_ref, "client failed to initialize");
                 }
 
                 // in case of success we transition to "connecting" state, otherwise
@@ -325,13 +325,13 @@ static int client_loop(void *data) {
 
         // in "connecting" state (re)try to connect to the server
         if (instance->actual_connection_state == VNC_STATE_CONNECTING) {
-            printf("client loop connects\n"); // DEBUG
+            FBLOG_INFO(instance->ext_instance_ref, "client loop connects");
 
             if (rfbInitClient(client, NULL, NULL)) {
-                printf("client loop: connected\n"); // DEBUG
+                FBLOG_INFO(instance->ext_instance_ref, "client loop: connected");
                 instance->actual_connection_state = VNC_STATE_CONNECTED;
             } else {
-                printf("client loop: connection failed\n"); // DEBUG
+                FBLOG_INFO(instance->ext_instance_ref, "client loop: connection failed");
                 
                 // unfortunately client has been freed by rfbInitClient at this point...
                 client = NULL;
@@ -354,10 +354,10 @@ static int client_loop(void *data) {
             }
             /*
             if (ConnectToRFBServer(client, client->serverHost, client->serverPort)) {
-                printf("client loop: connected\n"); // DEBUG
+                FBLOG_DEBUG(instance->ext_instance_ref, "client loop: connected");
                 if (InitialiseRFBConnection(client)) {
                     // we are now connected - keep trying on next iteration in case the connection attempt failed
-                    printf("client loop: connected & RFB initialised\n"); // DEBUG
+                    FBLOG_DEBUG(instance->ext_instance_ref, "client loop: connected & RFB initialised");
                     instance->actual_connection_state = VNC_STATE_CONNECTED;
                 }
             }
@@ -366,16 +366,18 @@ static int client_loop(void *data) {
 
         // in "connected" state run libvnc's event processing
         if (instance->actual_connection_state == VNC_STATE_CONNECTED) {
-            //printf("client loop processes VNC events\n"); // DEBUG
+            //FBLOG_TRACE(instance->ext_instance_ref, "client loop processes VNC events");
             need_reset = FALSE;
             res = WaitForMessage(client, VNC_WAIT_TIMEOUT_MICROSECONDS);
             if (res < 0) {
                 // something went wrong
+                FBLOG_WARN(instance->ext_instance_ref, "WaitForMessage failed");
                 need_reset = TRUE;
             } else if (res) {
                 // we got a message to process
                 if (!HandleRFBServerMessage(client)) {
                     // something else went wrong
+                    FBLOG_WARN(instance->ext_instance_ref, "HandleRFBServerMessage failed");
                     need_reset = TRUE;
                 }
             }
@@ -383,7 +385,7 @@ static int client_loop(void *data) {
             // In case one of the above commands failed we need to reconnect.
             // This is performed by queueing a request for reconnect on next iteration.
             if (need_reset) {
-                printf("client loop wants to reset VNC\n"); // DEBUG
+                FBLOG_DEBUG(instance->ext_instance_ref, "client loop wants to reset VNC");
                 instance->actual_connection_state = VNC_STATE_CONNECTING;
 
                 if (mtx_lock(&instance->mutex) == thrd_success) {
@@ -403,11 +405,11 @@ static int client_loop(void *data) {
             }
         }
 
-        //printf("client loop, after: actual=%d, wanted=%d\n", instance->actual_connection_state, wanted_state); // DEBUG
+        FBLOG_TRACE(instance->ext_instance_ref, "client loop, after: actual=%d, wanted=%d", instance->actual_connection_state, wanted_state);
         
         // clear the requested state transition if processed
         if (wanted_state != VNC_STATE_CLEARED && wanted_state != VNC_STATE_ERROR && wanted_state == instance->wanted_connection_state) {
-            printf("client loop clears wanted state\n"); // DEBUG
+            FBLOG_DEBUG(instance->ext_instance_ref, "client loop clears wanted state");
             if (mtx_lock(&instance->mutex) == thrd_success) {
                 if (wanted_state == instance->wanted_connection_state) {
                     instance->wanted_connection_state = VNC_STATE_CLEARED;
@@ -424,7 +426,7 @@ static int client_loop(void *data) {
         // go to sleep until a state change is requested in case we are disconnected and have nothing to do
         if (instance->actual_connection_state == VNC_STATE_DISCONNECTED && instance->wanted_connection_state == VNC_STATE_CLEARED) {
             // it looks like we don't have anything to do, lock the mutex to check that's really the case
-            printf("client loop goes to sleep\n"); // DEBUG
+            FBLOG_DEBUG(instance->ext_instance_ref, "client loop goes to sleep");
             if (mtx_lock(&instance->mutex) == thrd_success) {
                 if (wanted_state == VNC_STATE_CLEARED) {
                     // confirmed that we have nothing to do, wait indefinitely
@@ -432,11 +434,11 @@ static int client_loop(void *data) {
                 }
                 mtx_unlock(&instance->mutex);
             }
-            printf("client loop continues\n"); // DEBUG
+            FBLOG_DEBUG(instance->ext_instance_ref, "client loop continues");
         }
     }
 
-    printf("client loop destroys client\n"); // DEBUG
+    FBLOG_DEBUG(instance->ext_instance_ref, "client loop destroys client");
     destroy_client(client);
     
     instance->actual_connection_state = VNC_STATE_TERMINATED;
@@ -570,14 +572,14 @@ static int fblibvnc_configure_module(void *data, fbcollections_map_entry_t *conf
 
     mtx_unlock(&instance->mutex); // TODO: handle mtx_unlock error
 
-    printf("hostname=%s, port=%d, password=%s, connectTimeout=%ds, readTimeout=%ds\n", instance->hostname, instance->port, instance->password, instance->connect_timeout_seconds, instance->read_timeout_seconds); // DEBUG
+    FBLOG_TRACE(instance->ext_instance_ref, "hostname=%s, port=%d, connectTimeout=%ds, readTimeout=%ds", instance->hostname, instance->port, instance->connect_timeout_seconds, instance->read_timeout_seconds);
     
     if (success) {
-        printf("config success\n"); // DEBUG
+        FBLOG_DEBUG(instance->ext_instance_ref, "config success");
         set_wanted_connection_state(instance, VNC_STATE_CONNECTED);
         return FBERROR_NONE;
     } else {
-        printf("config failed\n"); // DEBUG
+        FBLOG_DEBUG(instance->ext_instance_ref, "config failed");
         set_wanted_connection_state(instance, VNC_STATE_DISCONNECTED);
         return FBERROR_UNSPECIFIC;
     }

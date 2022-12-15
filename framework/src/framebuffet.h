@@ -46,11 +46,93 @@
  */
 #define FBERROR_MEMORY_ALLOCATION 5
 
+/**
+ * @def FBLOG_LEVEL_ERROR
+ * @brief Messages logged with this level describe critical errors which prevent further operation (recovery is unlikely).
+ */
+#define FBLOG_LEVEL_ERROR 127
+
+/**
+ * @def FBLOG_LEVEL_WARN
+ * @brief Messages logged with this level describe errors which impact operation but might be possible to be recovered from.
+ */
+#define FBLOG_LEVEL_WARN 63
+
+/**
+ * @def FBLOG_LEVEL_INFO
+ * @brief used for any messages that are deemed useful to inform users of the module or framework about
+ */
+#define FBLOG_LEVEL_INFO 31
+
+/**
+ * @def FBLOG_LEVEL_DEBUG
+ * @brief used for regular debugging messages
+ */
+#define FBLOG_LEVEL_DEBUG 15
+
+/**
+ * @def FBLOG_LEVEL_TRACE
+ * @brief used for detailed debugging
+ */
+#define FBLOG_LEVEL_TRACE 7
+
+#define FBLOG_MESSAGE_BUFFER_SIZE 4096
+
+#ifndef FBLOG_COMPILED_MIN_LOG_LEVEL
+#define FBLOG_COMPILED_MIN_LOG_LEVEL FBLOG_LEVEL_INFO
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_ERROR)
+#define FBLOG_ERROR(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_ERROR(ref, format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_WARN)
+#define FBLOG_WARN(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_WARN(ref, format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_INFO)
+#define FBLOG_INFO(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_INFO(ref, format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_DEBUG)
+#define FBLOG_DEBUG(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_DEBUG(ref, format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_TRACE)
+#define FBLOG_TRACE(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_TRACE(ref, format, ...) ;
+#endif
+
+typedef uint8_t fblog_level_t;
+
+/**
+ * Will be called for every message not filtered out by currently set minimum log level.
+ *
+ * The message must only be read, not written to and not be freed. The message will be freed by
+ * the framework when this callback returns, so the message contents must be copied in
+ * case it should be referred to after this call ends.
+ *
+ * @param level log level of the message
+ * @param message fully formatted message, null-terminated; must only be read
+ */
+typedef void (*fblog_receiver_f)(fblog_level_t level, char *message);
 
 typedef struct {
     fbcollections_map_entry_t *modules;
     fbcollections_map_entry_t *config;
     fbcollections_map_entry_t *sources;
+
+    fblog_receiver_f log_receiver;
+    fblog_level_t minimum_log_level;
 } framebuffet_t;
 
 typedef struct {
@@ -235,6 +317,10 @@ typedef struct {
 } fbsource_module_instance_frame_update_t;
 
 typedef struct {
+    framebuffet_t *framebuffet;
+    char *log_prefix;
+    uint16_t log_prefix_length; // strlen omitting null termination
+
     fbsource_module_registration_t *module;
     char *instance_name;
     void *data;
@@ -252,9 +338,14 @@ extern "C" {
 int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
 int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
+void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
+
 // API for general use
 framebuffet_t* framebuffet_init();
 int framebuffet_destroy(framebuffet_t *framebuffet);
+
+void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver_f log_receiver);
+int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level);
 
 int framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
 //int framebuffet_load_modules(framebuffet_t* framebuffet, char *directory_path);

@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -5,33 +6,130 @@
 
 #include "framebuffet.h"
 
-static int load_module(fbsource_module_descriptor_t **module_descriptor, char *file_path);
+// redefine log macros to use the framework-internal log function
+// NOTE: using the macros requires that the framework instance is present as framebuffet_t *framebuffet
+#undef FBLOG_ERROR
+#undef FBLOG_WARN
+#undef FBLOG_INFO
+#undef FBLOG_DEBUG
+#undef FBLOG_TRACE
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_ERROR)
+#define FBLOG_ERROR(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_ERROR(format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_WARN)
+#define FBLOG_WARN(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_WARN(format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_INFO)
+#define FBLOG_INFO(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_INFO(format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_DEBUG)
+#define FBLOG_DEBUG(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_DEBUG(format, ...) ;
+#endif
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_TRACE)
+#define FBLOG_TRACE(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__);
+#else
+#define FBLOG_TRACE(format, ...) ;
+#endif
+
+#define FBLOG_DEFAULT_MIN_LOG_LEVEL FBLOG_LEVEL_INFO
+
+static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, char *format, va_list args) {
+    // we need to have a log receiver and the log level has to be runtime-enabled to continue
+    if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
+        return;
+    }
+
+    char buffer[FBLOG_MESSAGE_BUFFER_SIZE] = { 0 };
+    if (!vsnprintf(buffer, FBLOG_MESSAGE_BUFFER_SIZE, format, args)) {
+        return;
+    }
+
+    framebuffet->log_receiver(level, buffer);
+}
+
+static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t level, char *format, ...) {
+    // used to log within the framework itself
+
+    va_list args;
+    va_start(args, format);
+    framebuffet_log_internal(framebuffet, level, format, args);
+    va_end(args);
+}
+
+void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+    fbsource_module_instance_entry_t *module_instance_entry = instance_ref;
+    framebuffet_t *framebuffet = module_instance_entry->framebuffet;
+
+    // avoid unnecessary overhead if the message won't be logged anyway
+    if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
+        return;
+    }
+
+    // TODO: avoid malloc
+
+    int format_length = strlen(format);
+    size_t internal_format_size = format_length + module_instance_entry->log_prefix_length + 1;
+    char *internal_format = malloc(internal_format_size);
+    if (!internal_format) {
+        // drop message if "out of memory"
+        // FIXME: log
+        //framebuffet_log_internal(framebuffet, FBLOG_LEVEL_WARN, "dropped fbsource log message");
+        return;
+    }
+
+    memcpy(internal_format, module_instance_entry->log_prefix, module_instance_entry->log_prefix_length);
+    memcpy(internal_format + module_instance_entry->log_prefix_length, format, format_length);
+    internal_format[internal_format_size - 1] = 0;
+    
+    va_list args;
+    va_start(args, format);
+
+    framebuffet_log_internal(framebuffet, level, internal_format, args);
+    free(internal_format);
+
+    va_end(args);
+}
+
+static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path);
 
 #ifdef TARGET_UNIX
 #include <dlfcn.h>
 
-static int load_module(fbsource_module_descriptor_t **module_descriptor, char *file_path) {
+static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
     *module_descriptor = NULL;
-  
+
     //void *lib = dlopen(file_path, RTLD_LOCAL | RTLD_LAZY);
     void *lib = dlopen(file_path, RTLD_GLOBAL | RTLD_NOW);
     char *err_s = dlerror();
     if (lib == NULL || err_s != NULL) {
-        printf("loading module from %s failed: %s\n", file_path, err_s); // TODO: use logger
+        FBLOG_WARN("loading module from %s failed: %s", file_path, err_s);
         return FBERROR_UNSPECIFIC;
     }
 
     char *module_descriptor_symbol = dlsym(lib, "_fbsource_module_descriptor_symbol");
     err_s = dlerror();
     if (module_descriptor_symbol == NULL || err_s != NULL) {
-        printf("failed to get module descriptor symbol name from %s: %s\n", file_path, err_s); // TODO: use logger
+        FBLOG_WARN("failed to get module descriptor symbol name from %s: %s", file_path, err_s);
         return FBERROR_UNSPECIFIC;
     }
 
     *module_descriptor = dlsym(lib, module_descriptor_symbol);
     err_s = dlerror();
     if (*module_descriptor == NULL || err_s != NULL) {
-        printf("failed to get module descriptor %s from %s: %s\n", module_descriptor_symbol, file_path, err_s); // TODO: use logger
+        FBLOG_WARN("failed to get module descriptor %s from %s: %s", module_descriptor_symbol, file_path, err_s);
         *module_descriptor = NULL;
         return FBERROR_UNSPECIFIC;
     }
@@ -41,13 +139,32 @@ static int load_module(fbsource_module_descriptor_t **module_descriptor, char *f
 
 #endif
 
+void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver_f log_receiver) {
+    framebuffet->log_receiver = log_receiver;
+}
+
+int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level) {
+    int is_valid_level = (level == FBLOG_LEVEL_ERROR) || (level == FBLOG_LEVEL_WARN) || (level == FBLOG_LEVEL_INFO) || (level == FBLOG_LEVEL_DEBUG) || (level == FBLOG_LEVEL_TRACE);
+    if (!is_valid_level) {
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    framebuffet->minimum_log_level = level;
+    
+    return FBERROR_NONE;
+}
+
 framebuffet_t* framebuffet_init() {
     framebuffet_t *out = malloc(sizeof(framebuffet_t));
 
-    if (out != NULL) {
-        memset(out, 0, sizeof(framebuffet_t));
+    if (!out) {
+        return NULL;
     }
 
+    memset(out, 0, sizeof(framebuffet_t));
+
+    out->minimum_log_level = FBLOG_DEFAULT_MIN_LOG_LEVEL;
+    
     out->modules = fbcollections_map_create();
     out->config = fbcollections_map_create();
     out->sources = fbcollections_map_create();
@@ -238,9 +355,9 @@ int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token
     return FBERROR_NONE;
 }
 
-static int apply_module_descriptor(fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
+static int apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
     if (module_descriptor.api_version != FRAMEBUFFET_MODULE_API_VERSION) {
-        printf("module has been compiled with an incompatible API version %d\n", module_descriptor.api_version); // TODO: use logger
+        FBLOG_WARN("module has been compiled with an incompatible API version %d", module_descriptor.api_version);
         return FBERROR_UNSPECIFIC;
     }
   
@@ -248,7 +365,7 @@ static int apply_module_descriptor(fbsource_module_descriptor_t module_descripto
     char *license = module_descriptor.license;
 
     if (name == NULL || license == NULL) {
-        printf("module is missing name or license\n"); // TODO: use logger
+        FBLOG_WARN("module is missing name or license");
         return FBERROR_UNSPECIFIC;
     }
 
@@ -268,8 +385,10 @@ static int apply_module_descriptor(fbsource_module_descriptor_t module_descripto
 
 int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
     fbsource_module_descriptor_t *module_descriptor = NULL;
+
+    FBLOG_INFO("loading module %s", file_path);
   
-    int err = load_module(&module_descriptor, file_path);
+    int err = load_module(framebuffet, &module_descriptor, file_path);
     if (err != FBERROR_NONE) {
         return err;
     }
@@ -283,7 +402,7 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
         return FBERROR_MEMORY_ALLOCATION;
     }
 
-    int err = apply_module_descriptor(module_descriptor, registration);
+    int err = apply_module_descriptor(framebuffet, module_descriptor, registration);
     if (err != FBERROR_NONE) {
         return err;
     }
@@ -296,55 +415,99 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
   
     fbcollections_map_put(framebuffet->modules, &existing, registration->name, name_size, registration, sizeof(fbsource_module_registration_t));
 
+    FBLOG_INFO("registered source module \"%s\" (license: %s)", registration->name, registration->license);
+
     return FBERROR_NONE;
 }
 
 int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
     // FIXME: lock framebuffet instance with a mutex
-    
-    int instance_name_size = strlen(instance_name) + 1;
+
+    int instance_name_length = strlen(instance_name);
+    int instance_name_size = instance_name_length + 1;
+
+    FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
     fbcollections_map_entry_t *registration_entry = fbcollections_map_find_key(framebuffet->modules, module_name, strlen(module_name) + 1);
     if (registration_entry == NULL) {
-        printf("registration entry not found for module \"%s\"\n", module_name); // TODO: log
+        FBLOG_WARN("registration entry not found for module \"%s\"", module_name);
         return FBERROR_UNSPECIFIC;
     }
   
     fbsource_module_registration_t *registration = registration_entry->value;
 
+    // module instances must be unique per name within framebuffet instance
     fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
     if (existing_source_entry != NULL) {
-        printf("source \"%s\" has already been defined\n", instance_name); // TODO: log
+        FBLOG_WARN("source \"%s\" has already been defined", instance_name);
         return FBERROR_UNSPECIFIC;
     }
 
+    // create basic module instance entry
     fbsource_module_instance_entry_t *instance = malloc(sizeof(fbsource_module_instance_entry_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
     }
     memset(instance, 0, sizeof(fbsource_module_instance_entry_t));
-  
+
+    instance->framebuffet = framebuffet;
     instance->module = registration;
 
+    // copy instance name
     instance->instance_name = malloc(instance_name_size);
+    if (!instance->instance_name) {
+        free(instance);
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+    
     memcpy(instance->instance_name, instance_name, instance_name_size);
     instance->instance_name[instance_name_size - 1] = 0;
 
+    // assemble log prefix
+    int module_name_length = strlen(registration->name);
+    instance->log_prefix_length = 4 // "[", ":" and "] "
+        + module_name_length
+        + instance_name_length;
+    instance->log_prefix = malloc(instance->log_prefix_length + 1);
+    if (!instance->log_prefix) {
+        free(instance->instance_name);
+        free(instance);
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+
+    memcpy(instance->log_prefix, "[", 1);
+    memcpy(instance->log_prefix + 1, registration->name, module_name_length);
+    memcpy(instance->log_prefix + 1 + module_name_length, ":", 1);
+    memcpy(instance->log_prefix + 2 + module_name_length, instance_name, instance_name_length);
+    memcpy(instance->log_prefix + 2 + module_name_length + instance_name_length, "] \0", 3);
+
+    // initialize mutex
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
+        FBLOG_WARN("failed to initialize mutex for source instance \"%s\"", instance_name);
+        free(instance->instance_name);
+        free(instance->log_prefix);
         free(instance);
         return FBERROR_UNSPECIFIC;
     }
 
+    // instantiate fbsource
+    FBLOG_DEBUG("calling constructor for \"%s\", instance name \"%s\"", module_name, instance_name);
     void *data = NULL;
     int err = registration->module->_create(framebuffet, (void*) instance, &data);
+    FBLOG_TRACE("constructor call for \"%s\", instance name \"%s\" finished with %d, %p", module_name, instance_name, err, data);
     if (err != FBERROR_NONE) {
+        free(instance->instance_name);
+        free(instance->log_prefix);
         free(instance);
         return err;
     }
     instance->data = data;
 
+    // register to known sources
     fbcollections_map_put(framebuffet->sources, &existing_source_entry, instance_name, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t));
     *source_instance = instance;
+
+    FBLOG_INFO("registered source \"%s\"", instance_name);
 
     return FBERROR_NONE;
 }

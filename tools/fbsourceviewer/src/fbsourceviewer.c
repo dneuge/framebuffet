@@ -1,3 +1,5 @@
+#include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <threads.h>
@@ -5,6 +7,8 @@
 #include <SDL.h>
 
 #include <framebuffet.h>
+
+#define LOG_BUFFER_SIZE 8192
 
 static int num_digits(int value) {
     int digits = 0;
@@ -45,10 +49,55 @@ static void sleep_millis(int milliseconds) {
     thrd_sleep(&(struct timespec){.tv_nsec=(milliseconds * 1000000)}, NULL);
 }
 
+static const char* log_level_name(fblog_level_t level) {
+    switch (level) {
+        case FBLOG_LEVEL_ERROR: return "ERROR";
+        case FBLOG_LEVEL_WARN:  return "WARN";
+        case FBLOG_LEVEL_INFO:  return "INFO";
+        case FBLOG_LEVEL_DEBUG: return "DEBUG";
+        case FBLOG_LEVEL_TRACE: return "TRACE";
+        default:                return "UNKNOWN";
+    }
+}
+
+static mtx_t log_mutex;
+
+static void log_msg(char *message, ...) {
+    bool holds_mutex = (mtx_lock(&log_mutex) == thrd_success);
+
+    va_list args;
+    va_start(args, message);
+    vprintf(message, args);
+    va_end(args);
+    
+    printf("\n");
+
+    if (holds_mutex) {
+        mtx_unlock(&log_mutex);
+    }
+}
+
+static void log_receiver(fblog_level_t level, char *message) {
+    char buffer[LOG_BUFFER_SIZE] = { 0 };
+    if (!snprintf(buffer, LOG_BUFFER_SIZE, "[FrameBuffet] [%s] %s", log_level_name(level), message)) {
+        log_msg("dropped FrameBuffet log message");
+        return;
+    }
+
+    log_msg(buffer);
+}
+
 int main(int argc, char *argv[]) {
     int res;
 
+    if (mtx_init(&log_mutex, mtx_plain) != thrd_success) {
+        printf("failed to create log mutex\n");
+        return 1;
+    }
+
     framebuffet_t *framebuffet = framebuffet_init();
+    framebuffet_provide_log_receiver(framebuffet, log_receiver);
+    framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_TRACE);
 
     if (argc < 5) {
         printf("Call with config file, source ID and buffer ID to display and module paths.\n");
@@ -211,4 +260,6 @@ int main(int argc, char *argv[]) {
 
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    mtx_destroy(&log_mutex);
 };
