@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     framebuffet_t *framebuffet = framebuffet_init();
 
     if (argc < 5) {
-        printf("Call with config file, source ID and buffer ID to display and module paths.");
+        printf("Call with config file, source ID and buffer ID to display and module paths.\n");
         return 1;
     }
 
