@@ -7,7 +7,7 @@
 
 #include <rfb/rfbclient.h>
 
-#include <framebuffet.h>
+#include "../../../framework/src/framebuffet.h"
 
 #define VNC_DEFAULT_PORT 5900
 #define VNC_DEFAULT_CONNECT_TIMEOUT_SECONDS 5
