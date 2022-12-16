@@ -13,24 +13,24 @@ function die {
 
 echo "=== Building framework ==="
 cd "${script_dir}/framework"
-./build.sh || die "Building framework failed"
+./build.sh $@ || die "Building framework failed"
 echo
 
 echo "=== Building dummy source ==="
 cd "${script_dir}/fbsources/dummy"
-./build.sh || die "Building dummy source failed"
+./build.sh $@ || die "Building dummy source failed"
 echo
 
 echo "=== Building libvnc source ==="
 cd "${script_dir}/fbsources/libvnc"
-./build.sh || die "Building libvnc source failed"
+./build.sh $@ || die "Building libvnc source failed"
 echo
 
 echo "=== Building crop source ==="
 cd "${script_dir}/fbsources/crop"
-./build.sh || die "Building crop source failed"
+./build.sh $@ || die "Building crop source failed"
 echo
 
 echo "=== Building source viewer ==="
 cd "${script_dir}/tools/fbsourceviewer"
-./build.sh || die "Building source viewer failed"
+./build.sh $@ || die "Building source viewer failed"

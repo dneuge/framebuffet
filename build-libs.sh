@@ -4,12 +4,15 @@ set -Eeuo pipefail
 
 script_path=$(readlink -f "$0")
 script_dir=$(dirname "${script_path}")
+root_dir="${script_dir}"
 cd "${script_dir}"
 
 function die {
     echo $@
     exit 1
 }
+
+source ./_build_target.sh || die "Failed to include build target script"
 
 [[ -d lib/_build ]] && rm -Rf lib/_build
 mkdir -p lib/_build

@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 script_path=$(readlink -f "$0")
 script_dir=$(dirname "${script_path}")
+root_dir="${script_dir}/../.."
 cd "${script_dir}"
 
 src_dir="${script_dir}/src"
@@ -14,6 +15,8 @@ function die {
     echo $@
     exit 1
 }
+
+source ../../_build_target.sh || die "Failed to include build target script"
 
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 num_jobs=$(( $num_cpus + 1 ))

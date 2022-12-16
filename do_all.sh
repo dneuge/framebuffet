@@ -12,5 +12,5 @@ function die {
 }
 
 ./fetch-libs.sh || die "Fetching dependencies failed"
-./build-libs.sh || die "Building dependencies failed"
-./build.sh || die "Build failed"
+./build-libs.sh $@ || die "Building dependencies failed"
+./build.sh $@ || die "Build failed"
