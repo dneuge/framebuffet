@@ -85,6 +85,16 @@ function download {
     fi
     
     echo "- ${description} has been unpacked"
+    
+    echo "- applying patches"
+    if ! ls ${extract_dir}-*.patch >/dev/null 2>&1; then
+        echo "no patches found"
+    else
+        for patch_file in ${extract_dir}-*.patch; do
+            echo "applying ${patch_file}"
+            patch -p1 <"${patch_file}" || die "patch failed"
+        done
+    fi
 }
 
 download "zlib" zlib zlib-1.2.13.zip 1631786 https://zlib.net/zlib1213.zip d233fca7cf68db4c16dc5287af61f3cd01ab62495224c66639ca3da537701e42 9cb22b7d2aa208b61f5850c04bebda58
