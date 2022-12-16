@@ -22,6 +22,8 @@ There are currently no plans for Mac builds as the target platform is unavailabl
 
 Building is currently only supported from a Linux environment. If you're not on Linux, you will probably want to use a VM, WSL, Docker container or similar.
 
+A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
+
 Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below.
 
 ### Build scripts
