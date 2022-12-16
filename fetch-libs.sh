@@ -65,6 +65,11 @@ function download {
         cd "${extract_dir}"
         tar -x -z -f "${previous_dir}/_downloads/${filename}" || die "Failed to unpack ${filename} to ${extract_dir}"
         cd "${previous_dir}"
+    elif [[ "${filename}" =~ \.tar\.xz$ ]]; then
+        previous_dir="$(pwd)"
+        cd "${extract_dir}"
+        tar -x -J -f "${previous_dir}/_downloads/${filename}" || die "Failed to unpack ${filename} to ${extract_dir}"
+        cd "${previous_dir}"
     else
         rmdir "${extract_dir}"
         die "Unhandled file suffix: ${filename}"
@@ -86,3 +91,4 @@ download "zlib" zlib zlib-1.2.13.zip 1631786 https://zlib.net/zlib1213.zip d233f
 download "lzo" lzo lzo-2.10.tar.gz 600622 https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072 39d3f3f9c55c87b1e5d6888e1420f4b5
 download "libjpeg-turbo" libjpeg-turbo libjpeg-turbo-2.1.4.zip 2667456 https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.4.zip 658647569c8e7a5728c6692fd93df65d17e491f5808522f93fa908e339337cab ef4c3147b67629958a4c4a7b5af898eb
 download "LibVNCServer (LibVNCClient)" VNC LibVNCServer-0.9.13.zip 671682 https://github.com/LibVNC/libvncserver/archive/refs/tags/LibVNCServer-0.9.13.zip d209d70998a9b98f9120eeb82df7a17767796c477eaa8297e0a55856a977c54f f2e1df666b95c2b59916d6603da26ccd
+download "Mesa" mesa mesa-22.3.1.tar.xz 16972884 https://archive.mesa3d.org/mesa-22.3.1.tar.xz 3c9cd611c0859d307aba0659833386abdca4c86162d3c275ba5be62d16cf31eb 5644bca27c9be0092c98f1ec0e1bedd5
