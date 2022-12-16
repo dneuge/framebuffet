@@ -55,6 +55,7 @@ cp -a libjpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2
 cp -a libturbojpeg.so* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
 cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
 cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
+cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
 echo
 
 function build_libvncclient {
