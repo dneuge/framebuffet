@@ -27,8 +27,8 @@ mkdir build || die "zlib mkdir failed"
 cd build
 cmake .. || die "zlib CMake failed"
 make -j$num_jobs || die "zlib make failed"
-cp -a libz.so* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
-cp -a libz.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
+cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
+cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
 cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (3)"
 cp -a ../zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (4)"
 echo
@@ -40,7 +40,7 @@ mkdir build || die "lzo mkdir failed"
 cd build
 cmake -DENABLE_SHARED=ON .. || die "lzo CMake failed"
 make -j$num_jobs || die "lzo make failed"
-cp -a liblzo2.so* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
+cp -a liblzo2.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
 cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (2)"
 mkdir -p "${script_dir}/lib/_build/lzo"
 cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (3)"
@@ -53,9 +53,9 @@ mkdir build || die "libjpeg-turbo mkdir failed"
 cd build
 cmake -DENABLE_SHARED=ON .. || die "libjpeg-turbo CMake failed"
 make -j$num_jobs || die "libjpeg-turbo make failed"
-cp -a libjpeg.so* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
-cp -a libjpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
-cp -a libturbojpeg.so* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
+cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
+cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
+cp -a libturbojpeg.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
 cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
 cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
 cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
@@ -91,7 +91,7 @@ function build_libvncclient {
     
     if [[ "$1" == "ON" ]]; then
         # dynamically linked
-        cp -a libvncclient.so* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+        cp -a libvncclient.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
         mkdir -p "${script_dir}/lib/_build/rfb"
         cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (2)"
         cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (3)"

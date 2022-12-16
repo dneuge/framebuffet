@@ -18,7 +18,9 @@ fi
 export HOST_OS_NAME
 export HOST_OS_VERSION
 
+BUILD_TARGET_DYNLIB_EXT="so"
 if [[ "${BUILD_TARGET}" == "windows" ]]; then
+	BUILD_TARGET_DYNLIB_EXT="dll"
 	if [[ "${HOST_OS_NAME} ${HOST_OS_VERSION}" == "Ubuntu jammy" ]]; then
 		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-ubuntu22.04-windows-x86_64-mingw.cmake"
 	else
@@ -27,6 +29,7 @@ if [[ "${BUILD_TARGET}" == "windows" ]]; then
 elif [[ "${BUILD_TARGET}" != "linux" ]]; then
 	die "Unknown build target: ${BUILD_TARGET}"
 fi
+export BUILD_TARGET_DYNLIB_EXT
 
 # normalize paths
 if [[ "${CMAKE_TOOLCHAIN_FILE}" != "" ]]; then

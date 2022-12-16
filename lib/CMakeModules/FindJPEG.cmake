@@ -2,7 +2,13 @@ SET(JPEG_COPIED_DIR "${CMAKE_CURRENT_LIST_DIR}/../_build")
 
 SET(JPEG_INCLUDE_DIR "${JPEG_COPIED_DIR}/")
 SET(JPEG_INCLUDE_DIRS "${JPEG_INCLUDE_DIR}")
-SET(JPEG_LIBRARIES "${JPEG_COPIED_DIR}/libjpeg.so" "${JPEG_COPIED_DIR}/libturbojpeg.so")
+
+IF(UNIX)
+       SET(JPEG_LIBRARIES "${JPEG_COPIED_DIR}/libjpeg.so" "${JPEG_COPIED_DIR}/libturbojpeg.so")
+ELSEIF(WIN32)
+       SET(JPEG_LIBRARIES "${JPEG_COPIED_DIR}/libjpeg-62.dll" "${JPEG_COPIED_DIR}/libturbojpeg.dll")
+ENDIF()
+
 SET(JPEG_FOUND TRUE)
 
 INCLUDE(FindPackageHandleStandardArgs)
