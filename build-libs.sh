@@ -20,6 +20,18 @@ mkdir -p lib/_build
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 num_jobs=$(( $num_cpus + 1 ))
 
+echo "==== Building cJSON ===="
+cd "${script_dir}/lib/cjson"
+[[ -d build ]] && (rm -Rf build || die "cJSON clean failed")
+mkdir build || die "cJSON mkdir failed"
+cd build
+cmake -DBUILD_SHARED_AND_STATIC_LIBS=On .. || die "cJSON CMake failed"
+make -j$num_jobs || die "cJSON make failed"
+cp -a libcjson.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
+cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (2)"
+cp -a ../cJSON.h "${script_dir}/lib/_build/" || die "cJSON copy failed (3)"
+echo
+
 echo "==== Building zlib ===="
 cd "${script_dir}/lib/zlib"
 [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
