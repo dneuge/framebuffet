@@ -128,7 +128,7 @@ typedef void (*fblog_receiver_f)(fblog_level_t level, char *message);
 
 typedef struct {
     fbcollections_map_entry_t *modules;
-    fbcollections_map_entry_t *config;
+    fbcollections_map_entry_t *configurations;
     fbcollections_map_entry_t *sources;
 
     // this root-level mutex is only used to protect main data structures,
@@ -356,6 +356,9 @@ int framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
 //int framebuffet_load_configuration(framebuffet_t* framebuffet, char *file_path);
 
 int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor);
+
+int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config);
+int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config);
 
 int framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);

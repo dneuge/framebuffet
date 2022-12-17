@@ -46,6 +46,22 @@
 
 #define FBLOG_DEFAULT_MIN_LOG_LEVEL FBLOG_LEVEL_INFO
 
+static char* copy_string(char *s) {
+    if (!s) {
+        return NULL;
+    }
+    
+    int length = strlen(s);
+    char *copy = malloc(length + 1);
+    
+    if (copy) {
+        memcpy(copy, s, length);
+        copy[length] = 0;
+    }
+
+    return copy;
+}
+
 static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, char *format, va_list args) {
     // we need to have a log receiver and the log level has to be runtime-enabled to continue
     if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
@@ -170,17 +186,17 @@ framebuffet_t* framebuffet_init() {
     out->minimum_log_level = FBLOG_DEFAULT_MIN_LOG_LEVEL;
     
     out->modules = fbcollections_map_create();
-    out->config = fbcollections_map_create();
+    out->configurations = fbcollections_map_create();
     out->sources = fbcollections_map_create();
 
-    int success = (out->modules != NULL) && (out->config != NULL) && (out->sources != NULL);
+    int success = (out->modules != NULL) && (out->configurations != NULL) && (out->sources != NULL);
     if (success) {
         return out;
     }
 
     // something went wrong, deallocate memory
     fbcollections_map_free_map_and_payloads(out->modules);
-    fbcollections_map_free_map_and_payloads(out->config);
+    fbcollections_map_free_map_and_payloads(out->configurations);
     fbcollections_map_free_map_and_payloads(out->sources);
     mtx_destroy(&out->mutex);
     free(out);
@@ -433,6 +449,89 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
     FBLOG_INFO("registered source module \"%s\" (license: %s)", registration->name, registration->license);
 
     return FBERROR_NONE;
+}
+
+int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config) {
+    if (!config_name) {
+        FBLOG_WARN("framebuffet_set_configuration called with null config name");
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    if (!config) {
+        FBLOG_WARN("framebuffet_set_configuration called with null config for \"%s\"", config_name);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    char *key = copy_string(config_name);
+    if (!key) {
+        FBLOG_WARN("framebuffet_set_configuration failed to copy name");
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+    
+    fbcollections_map_entry_t *copied_config = fbcollections_map_copy_with_payloads(config);
+    if (!copied_config) {
+        FBLOG_WARN("framebuffet_set_configuration failed to copy provided configuration for \"%s\"", config_name);
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex to set configuration \"%s\"", config_name);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    fbcollections_map_entry_t *previous_config = NULL;
+    
+    FBLOG_DEBUG("framebuffet_set_configuration storing configuration \"%s\", %p", key, copied_config);
+    int res = fbcollections_map_put(framebuffet->configurations, &previous_config, key, strlen(key)+1, copied_config, sizeof(fbcollections_map_entry_t));
+    
+    mtx_unlock(&framebuffet->mutex);
+    
+    if (res < 0) {
+        FBLOG_WARN("failed to store configuration \"%s\" in map (error: %d)", key, res);
+        fbcollections_map_free_map_and_payloads(copied_config);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (previous_config) {
+        FBLOG_TRACE("framebuffet_set_configuration freeing previous configuration \"%s\", %p", key, previous_config);
+        fbcollections_map_free_map_and_payloads(previous_config);
+    }
+    
+    return FBERROR_NONE;
+}
+
+int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config) {
+    if (!config_name) {
+        FBLOG_WARN("framebuffet_get_configuration called with null config name");
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    if (!config) {
+        FBLOG_WARN("framebuffet_get_configuration called with null config (out variable) for \"%s\"", config_name);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    *config = NULL;
+    int err = FBERROR_NONE;
+
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex to get configuration \"%s\"", config_name);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    fbcollections_map_entry_t *entry = fbcollections_map_find_key(framebuffet->configurations, config_name, strlen(config_name)+1);
+    if (entry && entry->value) {
+        FBLOG_TRACE("framebuffet_get_configuration copying configuration for \"%s\", %p", config_name, entry->value);
+        *config = fbcollections_map_copy_with_payloads(entry->value);
+        if (*config == NULL) {
+            FBLOG_WARN("failed to copy configuration retrieved for \"%s\", %p", config_name, entry->value);
+            err = FBERROR_UNSPECIFIC;
+        }
+    }
+
+    mtx_unlock(&framebuffet->mutex);
+
+    return err;
 }
 
 int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
