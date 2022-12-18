@@ -18,6 +18,7 @@ Supplemental:
  - curl
  - git
  - nano
+ - pkgconf
  - unzip
  - wget
 

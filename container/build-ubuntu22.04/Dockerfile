@@ -19,6 +19,7 @@ RUN apt -y install \
     mingw-w64 \
     nano \
     nasm \
+    pkgconf \
     unzip \
     wget
 
