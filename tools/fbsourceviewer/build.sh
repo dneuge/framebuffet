@@ -19,6 +19,11 @@ if [[ "${BUILD_TARGET}" == "windows" ]]; then
     exit 0
 fi
 
+if ! pkgconf sdl2; then
+    echo "fbsourceviewer compilation currently is host-only but SDL2 does not seem to have been installed globally; skipping build"
+    exit 0
+fi
+
 [[ -d build ]] && rm -Rf build
 mkdir -p build
 

@@ -33,6 +33,7 @@ To build the plugin execute the following scripts in sequence, as needed:
 * [`fetch-libs.sh`](fetch-libs.sh) downloads (and verifies) external dependencies from the Internet into the `lib` directory
 * [`build-libs.sh`](build-libs.sh) builds the external dependencies
 * [`build.sh`](build.sh) builds the framework incl. all modules
+  * [`tools/fbsourceviewer`](tools/fbsourceviewer) will only get built if SDL2 has been installed globally on the host system; compilation for Windows is currently not supported
 
 You may also find [`do_all.sh`](do_all.sh) useful which runs all these commands in sequence.
 
