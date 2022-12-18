@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# FBFETCHLIBS_DOWNLOAD_ONLY=1 can be set to only download missing dependencies
+
 set -Eeuo pipefail
 
 script_path=$(readlink -f "$0")
@@ -51,6 +53,11 @@ function download {
         fi
         
         mv download.tmp "_downloads/${filename}" || die "Failed to move downloaded file to cache"
+    fi
+    
+    if [[ "${FBFETCHLIBS_DOWNLOAD_ONLY:-0}" == "1" ]]; then
+        echo "- download only has been requested, skipping extraction..."
+        return
     fi
     
     echo "- extracting ${description} from ${filename} to ${extract_dir}"
