@@ -4,6 +4,9 @@
 #include <string.h>
 #include <time.h>
 
+// FIXME: get emacs/FlyCheck using the include dir and reference properly
+#include "../../lib/_build/cJSON.h"
+
 #include "framebuffet.h"
 
 // redefine log macros to use the framework-internal log function
@@ -45,6 +48,31 @@
 #endif
 
 #define FBLOG_DEFAULT_MIN_LOG_LEVEL FBLOG_LEVEL_INFO
+
+#define FILE_READ_CHUNK_SIZE (512 * 1024) /* read up to 512kB at a time */
+
+#define FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE 7
+
+typedef struct {
+    int major; // to be incremented on breaking changes
+    int minor; // to be incremented as functionality gets extended which does not break (structural) compatibility
+} framebuffet_config_version_t;
+
+// older versions may continue to be supported by adapting contents on load
+static const framebuffet_config_version_t supported_min_framebuffet_config_version = {
+    .major = 1,
+    .minor = 0
+};
+
+// forward compatibility:
+// - higher major revision should not be attempted to be loaded
+// - higher minor revision may still be supported and should be loaded
+//   - warning should be logged to inform about possible reason for incompatibility in advance
+//   - unsupported features might be in use at which point loading should fail
+static const framebuffet_config_version_t supported_max_framebuffet_config_version = {
+    .major = 1,
+    .minor = 0
+};
 
 static char* copy_string(char *s) {
     if (!s) {
@@ -117,6 +145,81 @@ void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...)
     free(internal_format);
 
     va_end(args);
+}
+
+static char* read_file_as_string(framebuffet_t* framebuffet, char *file_path) {
+    char *buffer = NULL;
+    long size = 0;
+
+    FBLOG_DEBUG("read_file_as_string \"%s\"", file_path);
+    
+    FILE *fh = fopen(file_path, "rb");
+    if (!fh) {
+        FBLOG_WARN("failed to open file for reading: \"%s\"", file_path);
+        return NULL;
+    }
+
+    if (fseek(fh, 0, SEEK_END)) {
+        FBLOG_WARN("failed to seek in file \"%s\", unable to determine file size", file_path);
+        goto stop;
+    }
+
+    size = ftell(fh);
+    if (size == -1) {
+        FBLOG_WARN("unable to tell size of file \"%s\"", file_path);
+        goto stop;
+    }
+
+    FBLOG_TRACE("file size of %s is %ld bytes", file_path, size);
+
+    buffer = malloc(size + 1); // we need one more character for null-termination
+    memset(buffer, 0, size);
+    if (!buffer) {
+        FBLOG_WARN("failed to allocate %ld bytes to load \"%s\"", size, file_path);
+        goto stop;
+    }
+
+    rewind(fh);
+    if (ftell(fh) != 0) {
+        FBLOG_WARN("failed to rewind \"%s\"", file_path);
+        free(buffer);
+        buffer = NULL;
+        goto stop;
+    }
+
+    size_t offset = 0;
+    size_t remaining = size;
+    while (remaining > 0) {
+        int res = fread(buffer+offset, 1, FILE_READ_CHUNK_SIZE, fh);
+        offset += res;
+        remaining -= res;
+        
+        if (feof(fh)) {
+            break;
+        } else if (ferror(fh)) {
+            FBLOG_WARN("error reading \"%s\"", file_path);
+            remaining = -1;
+            break;
+        }
+    }
+
+    if (remaining != 0) {
+        FBLOG_WARN("file could not be read completely (remaining: %ld), aborting: \"%s\"", remaining, file_path);
+        free(buffer);
+        buffer = NULL;
+    }
+
+ stop:
+    if (fclose(fh)) {
+        FBLOG_WARN("failed to close file \"%s\"", file_path);
+    }
+
+    if (buffer) {
+        // this may be paranoid but we want to make *really* sure that what we just read is still null-terminated
+        buffer[size] = 0;
+    }
+    
+    return buffer;
 }
 
 static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path);
@@ -816,4 +919,402 @@ int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_
     timeout.tv_nsec = timeout.tv_nsec % 1000000000;
 
     return framebuffet_wait_for_update_internal(source_instance, buffer_id, last_token, timeout);
+}
+
+static int parse_framebuffet_config_version(framebuffet_t* framebuffet, framebuffet_config_version_t *version, char *s) {
+    char verification_buffer[FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE] = { 0 };
+    
+    if (!s) {
+        FBLOG_DEBUG("parse_framebuffet_config_version called with null string");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (strlen(s) > FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE) {
+        FBLOG_WARN("unable to parse excessively large version number \"%s\"; maximum supported string length is %d", s, FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE);
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    char *copy = copy_string(s);
+    if (!copy) {
+        FBLOG_WARN("parse_framebuffet_config_version failed to copy string");
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+    
+    int err = FBERROR_UNSPECIFIC;
+
+    FBLOG_TRACE("parse_framebuffet_config_version \"%s\"", s);
+    
+    char *first_dot = strchr(copy, '.');
+    if (!first_dot) {
+        FBLOG_DEBUG("failed to extract version from \"%s\": no dot", s);
+        goto end;
+    }
+    
+    if (strlen(first_dot) < 2) {
+        FBLOG_DEBUG("failed to extract version from \"%s\": minor revision is empty", s);
+        goto end;
+    }
+
+    if (strchr(first_dot+1, '.')) {
+        FBLOG_DEBUG("failed to extract version from \"%s\": more than one dot", s);
+        goto end;
+    }
+
+    version->minor = atoi(first_dot + 1);
+
+    // make minor revision unreachable, leaving only the major revision accessible in "copy"
+    *first_dot = '\0';
+    
+    version->major = atoi(copy);
+
+    FBLOG_DEBUG("parsed config version \"%s\": major %d, minor %d", s, version->major, version->minor);
+
+    if ((version->major < 0) || (version->minor < 0)) {
+        FBLOG_DEBUG("failed to extract version from \"%s\": parsed to negative numbers", s);
+        goto end;
+    }
+
+    if (snprintf(verification_buffer, FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE, "%d.%d", version->major, version->minor) <= 0) {
+        FBLOG_DEBUG("failed to print config version to verification buffer");
+        goto end;
+    }
+
+    verification_buffer[FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE - 1] = 0;
+    
+    if ((strlen(s) != strlen(verification_buffer)) || strncmp(verification_buffer, s, strlen(s))) {
+        FBLOG_DEBUG("parsed version does not match original string: \"%s\" != \"%s\"", verification_buffer, s);
+        goto end;
+    }
+
+    err = FBERROR_NONE;
+
+ end:
+    free(copy);
+    
+    return err;
+}
+
+static int check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
+    framebuffet_config_version_t config_version;
+    
+    cJSON *json_config_version = cJSON_GetObjectItemCaseSensitive(json, "_framebuffet_config_version");
+    if (!json_config_version || !cJSON_IsString(json_config_version)) {
+        FBLOG_WARN("provided JSON content does not appear to be a Frame Buffet actions configuration, unable to apply");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    int err = parse_framebuffet_config_version(framebuffet, &config_version, json_config_version->valuestring);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("failed to parse actions configuration format version \"%s\": %d", json_config_version->valuestring, err);
+        return err;
+    }
+
+    int is_min_major_revision = (config_version.major == supported_min_framebuffet_config_version.major);
+    int is_older_min_major_revision = (config_version.major < supported_min_framebuffet_config_version.major);
+    int is_older_min_minor_revision = is_min_major_revision && (config_version.minor < supported_min_framebuffet_config_version.minor);
+    int is_older_min_revision = is_older_min_major_revision || is_older_min_minor_revision;
+
+    int is_later_max_major_revision = config_version.major > supported_max_framebuffet_config_version.major;
+    
+    int is_max_major_revision = config_version.major == supported_max_framebuffet_config_version.major;
+    int is_later_max_minor_revision = is_max_major_revision && (config_version.minor > supported_max_framebuffet_config_version.minor);
+    
+    if (is_older_min_revision) {
+        FBLOG_WARN("actions JSON version %d.%d is older than the minimum supported version %d.%d; this version of Frame Buffet is too recent to load the configuration", config_version.major, config_version.minor, supported_min_framebuffet_config_version.major, supported_min_framebuffet_config_version.minor);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (is_later_max_major_revision) {
+        FBLOG_WARN("actions JSON version %d.%d is newer than the maximum supported version %d.%d; this version of Frame Buffet is too old to load the configuration", config_version.major, config_version.minor, supported_max_framebuffet_config_version.major, supported_max_framebuffet_config_version.minor);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (is_later_max_minor_revision) {
+        FBLOG_WARN("actions JSON version %d.%d is newer than the maximum supported version %d.%d; Frame Buffet will still try to load the configuration but application may fail, this version of Frame Buffet may be too old", config_version.major, config_version.minor, supported_max_framebuffet_config_version.major, supported_max_framebuffet_config_version.minor);
+    }
+
+    FBLOG_DEBUG("framebuffet_configure_from_actions_json: actions config version %d.%d is assumed to be compatible (supported: min %d.%d, max %d.%d)", config_version.major, config_version.minor, supported_min_framebuffet_config_version.major, supported_min_framebuffet_config_version.minor, supported_max_framebuffet_config_version.major, supported_max_framebuffet_config_version.minor);
+
+    return FBERROR_NONE;
+}
+
+static int build_configuration_from_json_action(framebuffet_t *framebuffet, fbcollections_map_entry_t **config, cJSON *json_action) {
+    // shared by set_configuration and create_source_instance
+
+    int err = FBERROR_NONE;
+
+    *config = NULL;
+
+    cJSON *json_base_config = cJSON_GetObjectItemCaseSensitive(json_action, "base_config");
+    if (!json_base_config) {
+        FBLOG_DEBUG("no base_config, creating empty map");
+        *config = fbcollections_map_create();
+        if (!*config) {
+            FBLOG_WARN("failed to create a new configuration map");
+            err = FBERROR_MEMORY_ALLOCATION;
+            goto end;
+        }
+    } else {
+        if (!cJSON_IsString(json_base_config) || (strlen(json_base_config->valuestring) < 1)) {
+            FBLOG_WARN("base_config is set but not a non-empty string");
+            err = FBERROR_UNSPECIFIC;
+            goto end;
+        }
+
+        FBLOG_DEBUG("retrieving base_config \"%s\"", json_base_config->valuestring);
+        err = framebuffet_get_configuration(framebuffet, json_base_config->valuestring, config); // config will be a copy on success
+        if (err != FBERROR_NONE) {
+            FBLOG_WARN("failed to retrieve base configuration \"%s\"", json_base_config->valuestring);
+            goto end;
+        }
+    }
+
+    cJSON *json_config = cJSON_GetObjectItemCaseSensitive(json_action, "config");
+    if (!json_config) {
+        // not providing any config entries is only allowed if we inherited from a base_config instead
+        FBLOG_DEBUG("no config entries provided");
+        if (!json_base_config) {
+            FBLOG_WARN("neither \"base_config\" nor \"config\" have been set; at least one of these properties is required");
+            err = FBERROR_UNSPECIFIC;
+        }
+        goto end;
+    }
+
+    if (!cJSON_IsObject(json_config) || (cJSON_GetArraySize(json_config) < 1)) {
+        FBLOG_WARN("\"config\" must be a non-empty object, if set");
+        err = FBERROR_UNSPECIFIC;
+        goto end;
+    }
+    
+    cJSON *json_config_entry = NULL;
+    cJSON_ArrayForEach(json_config_entry, json_config) {
+        if (!json_config_entry->string) {
+            FBLOG_WARN("unexpected cJSON structure: \"config\" entry has no \"string\" (object key)");
+            err = FBERROR_UNSPECIFIC;
+            goto end;
+        }
+
+        char *value = NULL;
+
+        // cJSON parses all number types as double, resulting in possible loss of precision, so we only support strings
+        if (!cJSON_IsString(json_config_entry)) {
+            FBLOG_WARN("value of entry \"%s\" is not a string", json_config_entry->string);
+            err = FBERROR_UNSPECIFIC;
+            goto end;
+        }
+        
+        value = copy_string(json_config_entry->valuestring);
+        if (!value) {
+            FBLOG_WARN("failed to copy value from string entry \"%s\"", json_config_entry->string);
+            err = FBERROR_MEMORY_ALLOCATION;
+            goto end;
+        }
+
+        char *key = copy_string(json_config_entry->string);
+        if (!key) {
+            FBLOG_WARN("failed to copy key \"%s\"", json_config_entry->string);
+            free(value);
+            err = FBERROR_MEMORY_ALLOCATION;
+            goto end;
+        }
+
+        FBLOG_TRACE("set \"%s\" = \"%s\"", key, value);
+        if (fbcollections_map_put_and_free_old_entry_with_payloads(*config, key, strlen(key) + 1, value, strlen(value) + 1) < 0) {
+            FBLOG_WARN("failed to store key \"%s\", value \"%s\" in configuration map", key, value);
+            free(key);
+            free(value);
+        }
+    }
+
+    FBLOG_TRACE("build_configuration_from_json_action success");
+    
+ end:
+    if (*config && (err != FBERROR_NONE)) {
+        FBLOG_DEBUG("build_configuration_from_json_action freeing map after error %d", err);
+        fbcollections_map_free_map_and_payloads(*config);
+        *config = NULL;
+    }
+
+    return err;
+}
+
+static int perform_json_action_set_configuration(framebuffet_t *framebuffet, cJSON *json_action) {
+    int err = FBERROR_UNSPECIFIC;
+    fbcollections_map_entry_t *config = NULL;
+    
+    cJSON *json_config_name = cJSON_GetObjectItemCaseSensitive(json_action, "name");
+    if (!json_config_name || !cJSON_IsString(json_config_name) || (strlen(json_config_name->valuestring) < 1)) {
+        FBLOG_WARN("set_configuration needs a non-empty string as \"name\"");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    FBLOG_DEBUG("perform_json_action_set_configuration name=\"%s\"", json_config_name->valuestring);
+    
+    err = build_configuration_from_json_action(framebuffet, &config, json_action);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("set_configuration failed to build a configuration from given input (error: %d)", err);
+        return err;
+    }
+
+    err = framebuffet_set_configuration(framebuffet, json_config_name->valuestring, config);
+    if (err == FBERROR_NONE) {
+        FBLOG_TRACE("performjson_action_set_configuration success");
+    } else {
+        FBLOG_WARN("set_configuration failed to store \"%s\" (error: %d)", json_config_name->valuestring, err);
+    }
+
+    if (config) {
+        FBLOG_DEBUG("configure_from_json_action_create_configuration freeing map");
+        fbcollections_map_free_map_and_payloads(config);
+    }
+    
+    return err;
+}
+
+static int perform_json_action_create_source_instance(framebuffet_t *framebuffet, cJSON *json_action) {
+    int err = FBERROR_UNSPECIFIC;
+    fbcollections_map_entry_t *config = NULL;
+    
+    cJSON *json_source_name = cJSON_GetObjectItemCaseSensitive(json_action, "name");
+    if (!json_source_name || !cJSON_IsString(json_source_name) || (strlen(json_source_name->valuestring) < 1)) {
+        FBLOG_WARN("create_source_instance needs a non-empty string as \"name\"");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    cJSON *json_module_name = cJSON_GetObjectItemCaseSensitive(json_action, "module");
+    if (!json_module_name || !cJSON_IsString(json_module_name) || (strlen(json_module_name->valuestring) < 1)) {
+        FBLOG_WARN("create_source_instance needs a non-empty string as \"module\"");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    FBLOG_DEBUG("perform_json_action_create_source_instance name=\"%s\", module=\"%s\"", json_source_name->valuestring, json_module_name->valuestring);
+
+    // TODO: configuration during create_source_instance should be optional; don't fail if not requested
+    err = build_configuration_from_json_action(framebuffet, &config, json_action);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("create_source_instance failed to build a configuration from given input (error: %d)", err);
+        return err;
+    }
+
+    fbsource_module_instance_entry_t *source_instance = NULL;
+    err = framebuffet_create_source_instance(framebuffet, &source_instance, json_module_name->valuestring, json_source_name->valuestring);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("create_source_instance failed to create \"%s\" from module \"%s\" (error: %d)", json_source_name->valuestring, json_module_name->valuestring, err);
+        goto end;
+    }
+
+    FBLOG_TRACE("perform_json_action_create_source_instance created \"%s\", configuring...", json_source_name->valuestring);
+    err = framebuffet_configure_source_instance(source_instance, config);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("create_source_instance failed to configure \"%s\" (error: %d)", json_source_name->valuestring, err);
+        goto end;
+    }    
+
+    FBLOG_TRACE("perform_json_action_create_source_instance configured \"%s\"", json_source_name->valuestring);
+    
+ end:
+    if (config) {
+        FBLOG_DEBUG("configure_from_json_action_create_configuration freeing map");
+        fbcollections_map_free_map_and_payloads(config);
+    }
+    
+    return err;
+}
+
+static int perform_json_action(framebuffet_t *framebuffet, char *action_name, cJSON *json_action) {
+    if (!strcmp(action_name, "set_configuration")) {
+        return perform_json_action_set_configuration(framebuffet, json_action);
+    }
+    
+    if (!strcmp(action_name, "create_source_instance")) {
+        return perform_json_action_create_source_instance(framebuffet, json_action);
+    }
+
+    FBLOG_WARN("unsupported action \"%s\"", action_name);
+    
+    return FBERROR_UNSPECIFIC;
+}
+
+int framebuffet_configure_from_actions_json(framebuffet_t *framebuffet, char *json_string) {
+    int err = FBERROR_UNSPECIFIC;
+    
+    cJSON *json = cJSON_Parse(json_string);
+    if (!json) {
+        FBLOG_WARN("failed to parse actions JSON");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (!cJSON_IsObject(json)) {
+        FBLOG_WARN("provided JSON content did not parse to an object");
+        goto end;
+    }
+
+    err = check_actions_json_version(framebuffet, json);
+    if (err != FBERROR_NONE) {
+        // details have already been logged
+        goto end;
+    }
+
+    cJSON *json_actions = cJSON_GetObjectItemCaseSensitive(json, "actions");
+    if (!json_actions) {
+        FBLOG_WARN("provided JSON content does not define any actions");
+        goto end;
+    }
+
+    if (!cJSON_IsArray(json_actions)) {
+        FBLOG_WARN("\"actions\" needs to be an array of objects");
+        goto end;
+    }
+    
+    cJSON *json_action = NULL;
+    int action_index = -1; // used for log messages
+    cJSON_ArrayForEach(json_action, json_actions) {
+        action_index++;
+
+        if (!cJSON_IsObject(json_action)) {
+            FBLOG_WARN("actions[%d] is not an object", action_index);
+            goto end;
+        }
+
+        cJSON *json_action_action = cJSON_GetObjectItemCaseSensitive(json_action, "action");
+        if (!json_action_action || !cJSON_IsString(json_action_action) || (strlen(json_action_action->valuestring) <= 0)) {
+            FBLOG_WARN("actions[%d][\"action\"] has to be a non-empty string", action_index);
+            goto end;
+        }
+
+        FBLOG_DEBUG("processing \"%s\" from actions[%d]", json_action_action->valuestring, action_index);
+        err = perform_json_action(framebuffet, json_action_action->valuestring, json_action);
+        if (err != FBERROR_NONE) {
+            FBLOG_WARN("actions[%d] failed processing (error %d)", action_index, err);
+            goto end;
+        }
+    }
+
+    if (action_index < 0) {
+        FBLOG_WARN("no actions have been processed, at least one action is expected per JSON actions file");
+        err = FBERROR_UNSPECIFIC;
+    }
+    
+ end:
+    cJSON_Delete(json);
+    
+    return err;
+}
+
+int framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path) {
+    char *json = read_file_as_string(framebuffet, file_path);
+
+    if (!json) {
+        FBLOG_WARN("failed to read actions JSON file \"%s\"", file_path);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    int err = framebuffet_configure_from_actions_json(framebuffet, json);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN("failed to process actions JSON file \"%s\"", file_path);
+    }
+
+    free(json);
+
+    return err;
 }

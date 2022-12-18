@@ -353,7 +353,9 @@ int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t 
 
 int framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
 //int framebuffet_load_modules(framebuffet_t* framebuffet, char *directory_path);
-//int framebuffet_load_configuration(framebuffet_t* framebuffet, char *file_path);
+
+int framebuffet_configure_from_actions_json(framebuffet_t* framebuffet, char *json_string);
+int framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path);
 
 int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor);
 
