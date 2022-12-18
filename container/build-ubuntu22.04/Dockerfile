@@ -26,11 +26,10 @@ RUN apt -y install \
 ## directory structure
 RUN mkdir /build
 
-VOLUME /build
-
 ## build user
 RUN groupadd -g 1000 build \
     && useradd -u 1000 -g build -d /home/build -m -s /bin/bash build \
     && chown -R build:build /build
 
+VOLUME /build
 CMD ["/bin/bash"]
