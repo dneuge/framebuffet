@@ -56,4 +56,4 @@ Arguments at build-time:
 
 The container does not define an entrypoint, the default command is simply a bash shell. You either need to enter it interactively or run your own scripts for build automation.
 
-A build user called `build` (UID/GID 1000) has been prepared together with an empty directory `/build` which is the recommended location for all work to be performed. By default, the container will be entered as `root`. It is recommended to change user and directory via `su build` and `cd /build`.
+For compatibility with default Gitlab CI `/builds` has been prepared as the recommended location to perform builds in. By default, an unprivileged user `build` (UID/GID 1000) with `/builds` as the initial working directory will be used unless deployment options are changed for the image.

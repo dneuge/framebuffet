@@ -24,12 +24,14 @@ RUN apt -y install \
     wget
 
 ## directory structure
-RUN mkdir /build
+RUN mkdir /builds
 
 ## build user
 RUN groupadd -g 1000 build \
     && useradd -u 1000 -g build -d /home/build -m -s /bin/bash build \
-    && chown -R build:build /build
+    && chown -R build:build /builds
 
-VOLUME /build
+VOLUME /builds
+USER build:build
+WORKDIR /builds
 CMD ["/bin/bash"]
