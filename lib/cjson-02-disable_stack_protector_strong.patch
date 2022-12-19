@@ -1,0 +1,22 @@
+Using -fstack-protector-strong impairs static linking with MinGW.
+
+--- a/cjson/CMakeLists.txt	2021-08-25 13:15:09.000000000 +0200
++++ b/cjson/CMakeLists.txt	2022-12-19 18:17:16.749812599 +0100
+@@ -38,7 +38,6 @@
+             -Wswitch-default
+             -Wconversion
+             -Wc++-compat
+-            -fstack-protector-strong
+             -Wcomma
+             -Wdouble-promotion
+             -Wparentheses
+@@ -48,6 +47,9 @@
+             -Wused-but-marked-unused
+             -Wswitch-enum
+         )
++        if(NOT WIN32)
++            list(APPEND custom_compiler_flags -fstack-protector-strong)
++        endif()
+     elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "MSVC")
+         # Disable warning c4001 - nonstandard extension 'single line comment' was used
+         # Define _CRT_SECURE_NO_WARNINGS to disable deprecation warnings for "insecure" C library functions
