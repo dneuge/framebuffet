@@ -1,0 +1,43 @@
+This patch adds a new CMake project to build only the C11 compatibility
+wrapper to be used outside of Mesa.
+
+--- a/mesa/_c11_only/CMakeLists.txt	1970-01-01 01:00:00.000000000 +0100
++++ b/mesa/_c11_only/CMakeLists.txt	2022-12-19 13:02:15.005670882 +0100
+@@ -0,0 +1,37 @@
++CMAKE_MINIMUM_REQUIRED(VERSION 3.22.1)
++
++INCLUDE(CheckCSourceCompiles)
++
++PROJECT(mesa_c11)
++
++SET(CMAKE_BUILD_TYPE Debug)
++
++SET(MESA_C11_SOURCES
++    ${CMAKE_CURRENT_SOURCE_DIR}/../src/c11/impl/time.c
++    ${CMAKE_CURRENT_SOURCE_DIR}/../src/c11/impl/threads_win32.c
++    ${CMAKE_CURRENT_SOURCE_DIR}/../src/c11/impl/threads_win32_tls_callback.cpp
++)
++
++SET(TIMESPEC_STRUCT_TEST_SOURCE "\n
++#include <time.h>\n
++int main() {
++    struct timespec test = {\n
++        .tv_sec = 1234,\n
++        .tv_nsec = 5678\n
++    };\n
++    return 0;\n
++}
++")
++CHECK_C_SOURCE_COMPILES("${TIMESPEC_STRUCT_TEST_SOURCE}" HAVE_STRUCT_TIMESPEC)
++IF(HAVE_STRUCT_TIMESPEC)
++    ADD_DEFINITIONS(-DHAVE_STRUCT_TIMESPEC)
++ENDIF()
++
++IF(WIN32)
++    ADD_LIBRARY(mesa_c11 MODULE ${MESA_C11_SOURCES})
++    ADD_LIBRARY(mesa_c11_static STATIC ${MESA_C11_SOURCES})
++    
++    TARGET_INCLUDE_DIRECTORIES(mesa_c11 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
++    TARGET_INCLUDE_DIRECTORIES(mesa_c11_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
++    SET_TARGET_PROPERTIES(mesa_c11_static PROPERTIES OUTPUT_NAME mesa_c11)
++ENDIF()

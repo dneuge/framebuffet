@@ -20,12 +20,52 @@ mkdir -p lib/_build
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 num_jobs=$(( $num_cpus + 1 ))
 
+# MinGW misses some C11 compatibility, most notably threads.h which is extensively used throughout Frame Buffet
+# Mesa seems to have the best maintained C11 compatibility wrapper available, so we borrow that but only if we
+# compile for Windows - other systems/environments should hopefully support C11 by now...
+if [[ "${BUILD_TARGET}" != "windows" ]]; then
+    echo "==== Skipping Mesa (only C11 compatibility) ===="
+else
+    echo "==== Building Mesa (only C11 compatibility) ===="
+    cd "${script_dir}/lib/mesa/_c11_only"
+    [[ -d build ]] && (rm -Rf build || die "Mesa (only C11 compatibility) clean failed")
+    mkdir build || die "Mesa (only C11 compatibility) mkdir failed"
+    cd build
+    cmake .. || die "Mesa (only C11 compatibility) CMake failed"
+    make -j$num_jobs || die "Mesa (only C11 compatibility) make failed"
+    mkdir -p "${script_dir}/lib/_build/c11" || die "Mesa (only C11 compatibility) mkdir failed"
+    cp -a libmesa_c11*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "Mesa (only C11 compatibility) copy failed (1)"
+    cp -a libmesa_c11*.a "${script_dir}/lib/_build/" || die "Mesa (only C11 compatibility) copy failed (2)"
+    cp -a ../../src/c11/*.h "${script_dir}/lib/_build/c11" || die "Mesa (only C11 compatibility) copy failed (3)"
+    
+    if ! grep C_DEFINES CMakeFiles/mesa_c11.dir/flags.make | grep -- -DHAVE_STRUCT_TIMESPEC; then
+        echo "- CMake appears NOT to have used -DHAVE_STRUCT_TIMESPEC, keeping headers unmodified"
+    else
+        echo "- CMake appears to have used -DHAVE_STRUCT_TIMESPEC, persisting in time.h"
+        
+        cd "${script_dir}/lib/_build/c11"
+        patch -p1 <<'EOF'
+--- a/time.h  2022-12-19 14:45:40.920933949 +0000
++++ b/time.h  2022-12-19 14:33:26.694721638 +0000
+@@ -27,6 +27,7 @@
+  * On MSVC `struct timespec` and `timespec_get` present at the same time;
+  * So detecting `HAVE_STRUCT_TIMESPEC` in meson script dynamically.
+  */
++#define HAVE_STRUCT_TIMESPEC /* set by Frame Buffet during build-libs.sh */
+ #ifndef HAVE_STRUCT_TIMESPEC
+ struct timespec
+ {
+EOF
+    fi
+fi
+echo
+
 echo "==== Building cJSON ===="
 cd "${script_dir}/lib/cjson"
 [[ -d build ]] && (rm -Rf build || die "cJSON clean failed")
 mkdir build || die "cJSON mkdir failed"
 cd build
-cmake -DBUILD_SHARED_AND_STATIC_LIBS=On .. || die "cJSON CMake failed"
+cmake -DBUILD_SHARED_AND_STATIC_LIBS=On -DENABLE_CJSON_TEST=Off .. || die "cJSON CMake failed"
 make -j$num_jobs || die "cJSON make failed"
 cp -a libcjson.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
 cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (2)"
