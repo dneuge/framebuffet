@@ -2,7 +2,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef HAVE_C11_THREADS
 #include <time.h>
+#else
+#include <c11/time.h>
+#endif
 
 // FIXME: get emacs/FlyCheck using the include dir and reference properly
 #include "../../lib/_build/cJSON.h"

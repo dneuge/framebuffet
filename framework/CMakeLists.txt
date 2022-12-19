@@ -1,6 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.22.1)
-
 PROJECT(framebuffet)
+
+INCLUDE(CheckIncludeFile)
 
 SET(CMAKE_BUILD_TYPE Debug)
 
@@ -13,27 +14,59 @@ ADD_DEFINITIONS(-DFBLOG_COMPILED_MIN_LOG_LEVEL=FBLOG_LEVEL_TRACE)
 
 SET(LIB_BUILD "${CMAKE_CURRENT_SOURCE_DIR}/../lib/_build")
 
+# check if C11 compatibility wrappers are needed for threads.h and subsequently time.h
+CHECK_INCLUDE_FILE(threads.h HAVE_C11_THREADS)
+IF(HAVE_C11_THREADS)
+    ADD_DEFINITIONS(-DHAVE_C11_THREADS)
+ELSE()
+    SET(LINK_C11_COMPAT_STATIC "${LIB_BUILD}/libmesa_c11.a")
+ENDIF()
+
 IF(UNIX)
+    ADD_DEFINITIONS(-DTARGET_UNIX)
+    
     ADD_LIBRARY(cjson SHARED IMPORTED)
     SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_LOCATION "${LIB_BUILD}/libcjson.so")
     
-    ADD_LIBRARY(framebuffet SHARED ${FRAMEBUFFET_SOURCES})
-    TARGET_COMPILE_DEFINITIONS(framebuffet PUBLIC -DTARGET_UNIX)
-    
-    ADD_LIBRARY(framebuffet_static STATIC ${FRAMEBUFFET_SOURCES})
-    TARGET_COMPILE_DEFINITIONS(framebuffet_static PUBLIC -DTARGET_UNIX)
-    SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet")
-    
-    # FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
-    # NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?
-    # https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
-    ADD_CUSTOM_TARGET(framebuffet_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:framebuffet_static> "${LIB_BUILD}/libcjson.a")
 ELSEIF(WIN32)
-    ADD_LIBRARY(cjson SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_LOCATION "${LIB_BUILD}/libcjson.dll")
+    ADD_DEFINITIONS(-DTARGET_WINDOWS)
     
-    ADD_LIBRARY(framebuffet MODULE ${FRAMEBUFFET_SOURCES})
-    TARGET_COMPILE_DEFINITIONS(framebuffet PUBLIC -DTARGET_WINDOWS)
+    ADD_LIBRARY(cjson SHARED IMPORTED)
+    SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_IMPLIB "${LIB_BUILD}/libcjson.dll")
+
+    #ADD_LIBRARY(framebuffet MODULE ${FRAMEBUFFET_SOURCES})
 ENDIF()
 
-TARGET_LINK_LIBRARIES(framebuffet cjson)
+# FIXME: framebuffet_static_lib does not export anything but cJSON symbols when compiled with MinGW
+
+ADD_LIBRARY(framebuffet SHARED ${FRAMEBUFFET_SOURCES})
+ADD_LIBRARY(framebuffet_static_lib SHARED ${FRAMEBUFFET_SOURCES})
+
+ADD_LIBRARY(framebuffet_static STATIC ${FRAMEBUFFET_SOURCES})
+
+TARGET_INCLUDE_DIRECTORIES(framebuffet PUBLIC ${LIB_BUILD})
+TARGET_INCLUDE_DIRECTORIES(framebuffet_static_lib PUBLIC ${LIB_BUILD})
+TARGET_INCLUDE_DIRECTORIES(framebuffet_static PUBLIC ${LIB_BUILD})
+
+SET(FRAMEBUFFET_LINK_OPTIONS -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/export_symbols.map)
+
+IF(WIN32)
+    # by default all DLLs get prefixed with "lib" when built with CMake and MinGW
+    # which is very unusual and should be avoided (incompatible with Java native library lookup etc.)
+    SET_TARGET_PROPERTIES(framebuffet PROPERTIES PREFIX "")
+    SET_TARGET_PROPERTIES(framebuffet_static_lib PROPERTIES PREFIX "")
+
+    # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
+    TARGET_LINK_OPTIONS(framebuffet PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+    TARGET_LINK_OPTIONS(framebuffet_static_lib PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+ENDIF()
+
+SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet")
+
+# FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
+# NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?
+# https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
+ADD_CUSTOM_TARGET(framebuffet_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:framebuffet_static> "${LIB_BUILD}/libcjson.a" "${LINK_C11_COMPAT_STATIC}")
+
+TARGET_LINK_LIBRARIES(framebuffet cjson ${LINK_C11_COMPAT_STATIC})
+TARGET_LINK_LIBRARIES(framebuffet_static_lib "${LIB_BUILD}/libcjson.a" ${LINK_C11_COMPAT_STATIC})

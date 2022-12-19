@@ -35,10 +35,10 @@ make -j$num_jobs || die "make failed"
 
 ## COPY
 mkdir -p "${release_dir}/lib" || die "Failed to create release directory lib"
-cp -a libframebuffet.so "${release_dir}/lib/" || die "Failed to copy Linux shared library to release directory"
-cp -a libframebuffet.a "${release_dir}/lib/" || die "Failed to copy Linux static library to release directory"
+cp -a *framebuffet*.${BUILD_TARGET_DYNLIB_EXT}* "${release_dir}/lib/" || die "Failed to copy shared library to release directory"
+cp -a libframebuffet.a "${release_dir}/lib/" || die "Failed to copy static library to release directory"
 
 mkdir -p "${release_dir}/include" || die "Failed to create release directory include"
-cp -a "${src_dir}"/*.h "${release_dir}/include/" || die "Failed to copy Linux headers to release directory"
+cp -a "${src_dir}"/*.h "${release_dir}/include/" || die "Failed to copy headers to release directory"
 
 echo Build complete.

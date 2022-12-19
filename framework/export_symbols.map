@@ -1,0 +1,34 @@
+{
+  global:
+    fbcollections_map_copy_with_payloads;
+    fbcollections_map_create;
+    fbcollections_map_find_key;
+    fbcollections_map_free_entry_and_payloads;
+    fbcollections_map_free_map_and_payloads;
+    fbcollections_map_put;
+    fbcollections_map_put_and_free_old_entry_with_payloads;
+    framebuffet_configure_from_actions_json;
+    framebuffet_configure_from_actions_json_file;
+    framebuffet_configure_source_instance;
+    framebuffet_copy_latest_frame;
+    framebuffet_create_source_instance;
+    framebuffet_destroy;
+    framebuffet_get_buffer_configuration;
+    framebuffet_get_configuration;
+    framebuffet_get_num_buffers;
+    framebuffet_get_source_configuration;
+    framebuffet_get_source_instance;
+    framebuffet_has_update;
+    framebuffet_init;
+    framebuffet_load_module;
+    framebuffet_log;
+    framebuffet_provide_log_receiver;
+    framebuffet_publish_num_buffers;
+    framebuffet_publish_update;
+    framebuffet_register_module;
+    framebuffet_set_configuration;
+    framebuffet_set_minimum_log_level;
+    framebuffet_wait_for_update;
+    framebuffet_wait_for_update_micros;
+  local: *;
+}; 
