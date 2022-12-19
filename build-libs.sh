@@ -142,6 +142,7 @@ function build_libvncclient {
         -DWITH_SASL=OFF \
         -DWITH_EXAMPLES=OFF \
         -DBUILD_SHARED_LIBS=$1 \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE \
         -DCMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
         .. || die "VNC CMake failed"
     make -j$num_jobs || die "VNC make failed"
