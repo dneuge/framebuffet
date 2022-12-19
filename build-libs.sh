@@ -86,7 +86,7 @@ cd "${script_dir}/lib/zlib"
 [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
 mkdir build || die "zlib mkdir failed"
 cd build
-cmake .. || die "zlib CMake failed"
+cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "zlib CMake failed"
 make -j$num_jobs || die "zlib make failed"
 cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
 cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
@@ -112,7 +112,7 @@ cd "${script_dir}/lib/libjpeg-turbo"
 [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
 mkdir build || die "libjpeg-turbo mkdir failed"
 cd build
-cmake -DENABLE_SHARED=ON .. || die "libjpeg-turbo CMake failed"
+cmake -DENABLE_SHARED=ON -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
 make -j$num_jobs || die "libjpeg-turbo make failed"
 cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
 cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
