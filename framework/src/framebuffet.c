@@ -258,6 +258,15 @@ static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t 
 
 #endif
 
+#ifdef TARGET_WINDOWS
+
+static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
+    // FIXME: implement
+    return FBERROR_UNSPECIFIC;
+}
+
+#endif
+
 void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver_f log_receiver) {
     framebuffet->log_receiver = log_receiver;
 }
