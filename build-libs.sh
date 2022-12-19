@@ -61,11 +61,20 @@ fi
 echo
 
 echo "==== Building cJSON ===="
+# ENABLE_PUBLIC_SYMBOLS and ENABLE_HIDDEN_SYMBOLS are undocumented extra options
+# if they are not set, cJSON's symbols will override all other symbols in a statically linked DLL,
+# regardless of other linker options used to link the including module, so cJSON's symbol export
+# unfortunately has to be disabled here (MinGW 10.3.0)
 cd "${script_dir}/lib/cjson"
 [[ -d build ]] && (rm -Rf build || die "cJSON clean failed")
 mkdir build || die "cJSON mkdir failed"
 cd build
-cmake -DBUILD_SHARED_AND_STATIC_LIBS=On -DENABLE_CJSON_TEST=Off .. || die "cJSON CMake failed"
+cmake \
+    -DBUILD_SHARED_AND_STATIC_LIBS=On \
+    -DENABLE_CJSON_TEST=Off \
+    -DENABLE_PUBLIC_SYMBOLS=Off \
+    -DENABLE_HIDDEN_SYMBOLS=On \
+    .. || die "cJSON CMake failed"
 make -j$num_jobs || die "cJSON make failed"
 cp -a libcjson.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
 cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (2)"
