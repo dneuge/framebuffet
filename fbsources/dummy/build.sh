@@ -34,8 +34,8 @@ cmake .. || die "CMake failed"
 make -j$num_jobs || die "make failed"
 
 ## COPY
-mkdir -p "${release_dir}" || die "Failed to create release directory lib"
-cp -a fbsource_dummy.so "${release_dir}/" || die "Failed to copy Linux shared library to release directory"
-cp -a fbsource_dummy.a "${release_dir}/" || die "Failed to copy Linux static library to release directory"
+mkdir -p "${release_dir}" || die "Failed to create release directory"
+cp -a fbsource_dummy*.${BUILD_TARGET_DYNLIB_EXT}* "${release_dir}/" || die "Failed to copy modules to release directory"
+cp -a fbsource_dummy.a "${release_dir}/" || die "Failed to copy static library to release directory"
 
 echo Build complete.

@@ -1,7 +1,13 @@
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef HAVE_C11_THREADS
 #include <time.h>
 #include <threads.h>
+#else
+#include <c11/time.h>
+#include <c11/threads.h>
+#endif
 
 #include <stdbool.h>
 

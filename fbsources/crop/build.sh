@@ -35,7 +35,7 @@ make -j$num_jobs || die "make failed"
 
 ## COPY
 mkdir -p "${release_dir}" || die "Failed to create release directory lib"
-cp -a fbsource_crop.so "${release_dir}/" || die "Failed to copy Linux shared library to release directory"
-cp -a fbsource_crop.a "${release_dir}/" || die "Failed to copy Linux static library to release directory"
+cp -a fbsource_crop*.${BUILD_TARGET_DYNLIB_EXT}* "${release_dir}/" || die "Failed to copy modules to release directory"
+cp -a fbsource_crop.a "${release_dir}/" || die "Failed to copy static library to release directory"
 
 echo Build complete.

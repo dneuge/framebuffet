@@ -13,6 +13,10 @@ SET(VIEWER_SOURCES
 
 FIND_PACKAGE(SDL2 REQUIRED)
 
+# currently we only support local compilation on Linux,
+# so we should not have any need for C11 compatibility wrappers
+ADD_DEFINITIONS(-DHAVE_C11_THREADS)
+
 INCLUDE_DIRECTORIES(fbsourceviewer "${SDL2_INCLUDE_DIRS}" ${FRAMEBUFFET_INCLUDE})
 
 ADD_EXECUTABLE(fbsourceviewer ${VIEWER_SOURCES})
