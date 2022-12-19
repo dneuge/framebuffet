@@ -1,0 +1,32 @@
+Using Ubuntu 22.04 with MinGW 10.3.0 compilation of cJSON fails due to
+double-to-float conversion warnings caused by (presumably) bad headers
+provided by MinGW. This patch simply disables the interpretation of that
+warning as an error to pass compilation.
+
+MinGW bug report: https://sourceforge.net/p/mingw-w64/bugs/481/
+
+In file included from /builds/framebuffet/lib/cjson/cJSON.c:42:
+/builds/framebuffet/lib/cjson/cJSON.c: In function 'print_number':
+/builds/framebuffet/lib/cjson/cJSON.c:561:15: error: conversion from 'double' to 'float' may change value [-Werror=float-conversion]
+  561 |     if (isnan(d) || isinf(d))
+      |               ^
+/builds/framebuffet/lib/cjson/cJSON.c:561:27: error: conversion from 'double' to 'float' may change value [-Werror=float-conversion]
+  561 |     if (isnan(d) || isinf(d))
+
+--- a/cjson/CMakeLists.txt	2021-08-25 13:15:09.000000000 +0200
++++ b/cjson/CMakeLists.txt	2022-12-19 14:11:19.480930392 +0100
+@@ -62,6 +62,14 @@
+     endif()
+ endif()
+ 
++if(WIN32)
++    # x86_64-w64-mingw32-gcc uses broken headers for isnan leading to (probably false-positive)
++    # double-to-float-conversion warnings that are treated as errors by default and need to be
++    # ignored (or otherwise worked around) to compile
++    # see: https://sourceforge.net/p/mingw-w64/bugs/481/
++    list(APPEND custom_compiler_flags -Wno-error=float-conversion)
++endif()
++
+ option(ENABLE_SANITIZERS "Enables AddressSanitizer and UndefinedBehaviorSanitizer." OFF)
+ if (ENABLE_SANITIZERS)
+     list(APPEND custom_compiler_flags
