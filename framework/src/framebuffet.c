@@ -195,7 +195,8 @@ static char* read_file_as_string(framebuffet_t* framebuffet, char *file_path) {
     size_t offset = 0;
     size_t remaining = size;
     while (remaining > 0) {
-        int res = fread(buffer+offset, 1, FILE_READ_CHUNK_SIZE, fh);
+        int chunkSize = (remaining < FILE_READ_CHUNK_SIZE) ? remaining : FILE_READ_CHUNK_SIZE;
+        int res = fread(buffer+offset, 1, chunkSize, fh);
         offset += res;
         remaining -= res;
         

@@ -10,6 +10,16 @@ SET(FRAMEBUFFET_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/framebuffet.c
 )
 
+IF(WIN32)
+    #SET(FRAMEBUFFET_SOURCES ${FRAMEBUFFET_SOURCES}
+    #    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows/framebuffet_dll_shim_fwside.c
+    #)
+    
+    SET(FRAMEBUFFET_DLL_SHIM_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows/framebuffet_dll_shim.c
+    )
+ENDIF()
+
 ADD_DEFINITIONS(-DFBLOG_COMPILED_MIN_LOG_LEVEL=FBLOG_LEVEL_TRACE)
 
 SET(LIB_BUILD "${CMAKE_CURRENT_SOURCE_DIR}/../lib/_build")
@@ -59,6 +69,9 @@ IF(WIN32)
     # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
     TARGET_LINK_OPTIONS(framebuffet PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
     TARGET_LINK_OPTIONS(framebuffet_static_lib PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+
+    ADD_LIBRARY(framebuffet_dll_shim STATIC ${FRAMEBUFFET_DLL_SHIM_SOURCES})
+    TARGET_INCLUDE_DIRECTORIES(framebuffet_dll_shim PUBLIC ${LIB_BUILD})
 ENDIF()
 
 SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet")

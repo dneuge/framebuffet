@@ -37,6 +37,7 @@ make -j$num_jobs || die "make failed"
 mkdir -p "${release_dir}/lib" || die "Failed to create release directory lib"
 cp -a *framebuffet*.${BUILD_TARGET_DYNLIB_EXT}* "${release_dir}/lib/" || die "Failed to copy shared library to release directory"
 cp -a libframebuffet.a "${release_dir}/lib/" || die "Failed to copy static library to release directory"
+[[ -f libframebuffet_dll_shim.a ]] && (cp -a libframebuffet_dll_shim.a "${release_dir}/lib/" || die "Failed to copy plugin-side DLL shim to release directory")
 
 mkdir -p "${release_dir}/include" || die "Failed to create release directory include"
 cp -a "${src_dir}"/*.h "${release_dir}/include/" || die "Failed to copy headers to release directory"
