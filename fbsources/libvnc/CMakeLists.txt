@@ -31,6 +31,9 @@ ADD_LIBRARY(libvncclient SHARED IMPORTED)
 SET(ZLIB_NAME "libz")
 SET(ZLIB_STATIC_NAME "${ZLIB_NAME}")
 
+SET(FBPLUGIN_LINK_OPTIONS "")
+#SET(FBPLUGIN_LINK_OPTIONS -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/export_symbols.map)
+
 IF(UNIX)
     ADD_LIBRARY(framebuffet INTERFACE)
 
@@ -50,6 +53,10 @@ ELSEIF(WIN32)
 
     ADD_LIBRARY(fbsource_libvnc MODULE ${FBPLUGIN_SOURCES})
     ADD_LIBRARY(fbsource_libvnc_static_module MODULE ${FBPLUGIN_SOURCES})
+
+    # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
+    TARGET_LINK_OPTIONS(fbsource_libvnc PRIVATE -static-libgcc ${FBPLUGIN_LINK_OPTIONS})
+    TARGET_LINK_OPTIONS(fbsource_libvnc_static_module PRIVATE -static-libgcc ${FBPLUGIN_LINK_OPTIONS})
 ENDIF()
 
 # MinGW is really pedantic about the order in which static dependencies are defined:

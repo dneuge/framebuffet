@@ -24,7 +24,9 @@ ELSE()
     SET(LINK_C11_COMPAT_STATIC "${LIB_BUILD}/libmesa_c11.a")
 ENDIF()
 
-# configure plugin
+SET(FBPLUGIN_LINK_OPTIONS "")
+#SET(FBPLUGIN_LINK_OPTIONS -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/export_symbols.map)
+
 IF(UNIX)
     ADD_LIBRARY(framebuffet INTERFACE)
     ADD_LIBRARY(fbsource_dummy SHARED ${FBPLUGIN_SOURCES})
@@ -33,6 +35,9 @@ ELSEIF(WIN32)
     SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_IMPLIB "${FRAMEBUFFET_LIB}/framebuffet.dll")
 
     ADD_LIBRARY(fbsource_dummy MODULE ${FBPLUGIN_SOURCES})
+
+    # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
+    TARGET_LINK_OPTIONS(fbsource_dummy PRIVATE -static-libgcc ${FBPLUGIN_LINK_OPTIONS})
 ENDIF()
 
 ADD_LIBRARY(fbsource_dummy_static STATIC ${FBPLUGIN_SOURCES})
