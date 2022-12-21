@@ -435,6 +435,7 @@ static int client_loop(void *data) {
                 mtx_unlock(&instance->mutex);
             } else {
                 // if mutex lock failed we still need to clear the requested state
+                FBLOG_WARN(instance->ext_instance_ref, "client loop failed to lock mutex to clear wanted state");
                 if (wanted_state == instance->wanted_connection_state) {
                     instance->wanted_connection_state = VNC_STATE_CLEARED;
                 }
