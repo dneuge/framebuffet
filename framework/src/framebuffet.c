@@ -620,13 +620,11 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
     // copy instance_name for use as map key
-    char *key = malloc(instance_name_size);
+    char *key = copy_string(instance_name);
     if (!key) {
         FBLOG_WARN("failed to copy instance name for source instantiation");
         return FBERROR_MEMORY_ALLOCATION;
     }
-    memcpy(key, instance_name, instance_name_length);
-    key[instance_name_length] = 0;
 
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for source instantiation");
@@ -666,7 +664,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     instance->module = registration;
 
     // copy instance name
-    instance->instance_name = malloc(instance_name_size);
+    instance->instance_name = copy_string(instance_name);
     if (!instance->instance_name) {
         mtx_unlock(&framebuffet->mutex);
         free(instance);
@@ -674,9 +672,6 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         return FBERROR_MEMORY_ALLOCATION;
     }
     
-    memcpy(instance->instance_name, instance_name, instance_name_size);
-    instance->instance_name[instance_name_size - 1] = 0;
-
     // assemble log prefix
     int module_name_length = strlen(registration->name);
     instance->log_prefix_length = 4 // "[", ":" and "] "
