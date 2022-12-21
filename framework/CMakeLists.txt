@@ -11,10 +11,6 @@ SET(FRAMEBUFFET_SOURCES
 )
 
 IF(WIN32)
-    #SET(FRAMEBUFFET_SOURCES ${FRAMEBUFFET_SOURCES}
-    #    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows/framebuffet_dll_shim_fwside.c
-    #)
-    
     SET(FRAMEBUFFET_DLL_SHIM_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows/framebuffet_dll_shim.c
     )
