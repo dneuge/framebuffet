@@ -95,6 +95,20 @@ static char* copy_string(char *s) {
     return copy;
 }
 
+static char* copy_string_format_safe(char *s) {
+    char *out = copy_string(s);
+    if (out) {
+        // % is interpreted when used in format strings; change to something less likely to cause issues
+        for (int i=strlen(out); i>=0; i--) {
+            if (out[i] == '%') {
+                out[i] = '_';
+            }
+        }
+    }
+
+    return out;
+}
+
 static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, char *format, va_list args) {
     // we need to have a log receiver and the log level has to be runtime-enabled to continue
     if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
@@ -614,9 +628,6 @@ int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name,
 }
 
 int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
-    int instance_name_length = strlen(instance_name);
-    int instance_name_size = instance_name_length + 1;
-
     FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
     // copy instance_name for use as map key
@@ -643,7 +654,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     fbsource_module_registration_t *registration = registration_entry->value;
 
     // module instances must be unique per name within framebuffet instance
-    fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, key, instance_name_size);
+    fbcollections_map_entry_t *existing_source_entry = fbcollections_map_find_key(framebuffet->sources, key, strlen(key)+1);
     if (existing_source_entry != NULL) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" has already been defined", instance_name);
@@ -663,35 +674,62 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     instance->framebuffet = framebuffet;
     instance->module = registration;
 
-    // copy instance name
-    instance->instance_name = copy_string(instance_name);
-    if (!instance->instance_name) {
+    // copy instance and module names, sanitized for use as format on *printf functions
+    char *safe_instance_name = copy_string_format_safe(instance_name);
+    char *safe_module_name = copy_string_format_safe(module_name);
+    if (!safe_instance_name || !safe_module_name) {
         mtx_unlock(&framebuffet->mutex);
+        
         free(instance);
         free(key);
+
+        if (safe_instance_name) {
+            free(safe_instance_name);
+        }
+
+        if (safe_module_name) {
+            free(safe_module_name);
+        }
+        
         return FBERROR_MEMORY_ALLOCATION;
     }
     
     // assemble log prefix
-    int module_name_length = strlen(registration->name);
+    int instance_name_length = strlen(safe_instance_name);
+    int module_name_length = strlen(safe_module_name);
     instance->log_prefix_length = 4 // "[", ":" and "] "
         + module_name_length
         + instance_name_length;
-    instance->log_prefix = malloc(instance->log_prefix_length + 1);
+    int log_prefix_size = instance->log_prefix_length + 1;
+    instance->log_prefix = malloc(log_prefix_size);
     if (!instance->log_prefix) {
         mtx_unlock(&framebuffet->mutex);
         free(instance->instance_name);
         free(instance);
         free(key);
+        free(safe_instance_name);
+        free(safe_module_name);
         return FBERROR_MEMORY_ALLOCATION;
     }
 
-    memcpy(instance->log_prefix, "[", 1);
-    memcpy(instance->log_prefix + 1, registration->name, module_name_length);
-    memcpy(instance->log_prefix + 1 + module_name_length, ":", 1);
-    memcpy(instance->log_prefix + 2 + module_name_length, instance_name, instance_name_length);
-    memcpy(instance->log_prefix + 2 + module_name_length + instance_name_length, "] \0", 3);
+    if (snprintf(instance->log_prefix, log_prefix_size, "[%s:%s] ", safe_module_name, safe_instance_name) != instance->log_prefix_length) {
+        mtx_unlock(&framebuffet->mutex);
+        FBLOG_WARN("failed to construct log prefix for source \"%s\"", instance_name);
+        free(instance->instance_name);
+        free(instance);
+        free(key);
+        free(safe_instance_name);
+        free(safe_module_name);
+        return FBERROR_UNSPECIFIC;
+    }
+    instance->log_prefix[log_prefix_size-1] = 0;
 
+    free(safe_instance_name);
+    safe_instance_name = NULL;
+    
+    free(safe_module_name);
+    safe_module_name = NULL;
+    
     // initialize mutex
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
         mtx_unlock(&framebuffet->mutex);
@@ -719,8 +757,8 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     instance->data = data;
 
     // register to known sources
-    FBLOG_TRACE("recording source \"%s\", size=%ld", instance_name, instance_name_size);
-    if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, key, instance_name_size, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
+    FBLOG_TRACE("recording source \"%s\", size=%ld", key, strlen(key)+1);
+    if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, key, strlen(key)+1, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" failed to register", instance_name);
         err = registration->module->_destroy(data);
