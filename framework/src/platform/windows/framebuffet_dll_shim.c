@@ -33,6 +33,13 @@ static framebuffet_dll_shim_t _framebuffet_dll_shim = {
 static void link_shim(framebuffet_dll_shim_t *runtime) {
     _framebuffet_dll_shim.framebuffet_publish_num_buffers = runtime->framebuffet_publish_num_buffers;
     _framebuffet_dll_shim.framebuffet_publish_update = runtime->framebuffet_publish_update;
+    _framebuffet_dll_shim.framebuffet_log_va = runtime->framebuffet_log_va;
+    
+    _framebuffet_dll_shim.framebuffet_get_source_instance = runtime->framebuffet_get_source_instance;
+    _framebuffet_dll_shim.framebuffet_get_num_buffers = runtime->framebuffet_get_num_buffers;
+    _framebuffet_dll_shim.framebuffet_get_buffer_configuration = runtime->framebuffet_get_buffer_configuration;
+    _framebuffet_dll_shim.framebuffet_copy_latest_frame = runtime->framebuffet_copy_latest_frame;
+    _framebuffet_dll_shim.framebuffet_wait_for_update_micros = runtime->framebuffet_wait_for_update_micros;
 
     _framebuffet_dll_shim.fbcollections_map_copy_with_payloads = runtime->fbcollections_map_copy_with_payloads;
     _framebuffet_dll_shim.fbcollections_map_find_key = runtime->fbcollections_map_find_key;
@@ -50,6 +57,13 @@ static int check_shim_complete(framebuffet_dll_shim_t *shim) {
     
     if (!shim->framebuffet_publish_num_buffers) return 0;
     if (!shim->framebuffet_publish_update) return 0;
+    if (!shim->framebuffet_log_va) return 0;
+    
+    if (!shim->framebuffet_get_source_instance) return 0;
+    if (!shim->framebuffet_get_num_buffers) return 0;
+    if (!shim->framebuffet_get_buffer_configuration) return 0;
+    if (!shim->framebuffet_copy_latest_frame) return 0;
+    if (!shim->framebuffet_wait_for_update_micros) return 0;
     
     if (!shim->fbcollections_map_copy_with_payloads) return 0;
     if (!shim->fbcollections_map_find_key) return 0;
@@ -115,4 +129,41 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
 int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_publish_update(instance_ref, buffer_id, token);
+}
+
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args) {
+    if (!_framebuffet_dll_shim._shim_loaded) return;
+    _framebuffet_dll_shim.framebuffet_log_va(instance_ref, level, format, args);
+}
+
+void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    framebuffet_log_va(instance_ref, level, format, args);
+    va_end(args);
+}
+
+fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.framebuffet_get_source_instance(framebuffet, instance_name);
+}
+
+int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance) {
+    if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
+    return _framebuffet_dll_shim.framebuffet_get_num_buffers(source_instance);
+}
+
+fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.framebuffet_get_buffer_configuration(source_instance, buffer_id);
+}
+
+int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+    if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
+    return _framebuffet_dll_shim.framebuffet_copy_latest_frame(source_instance, destination, buffer_size, buffer_id, token);
+}
+
+int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
+    if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
+    return _framebuffet_dll_shim.framebuffet_wait_for_update_micros(source_instance, buffer_id, last_token, microseconds);
 }

@@ -19,6 +19,13 @@ const framebuffet_dll_shim_t _framebuffet_dll_shim_fwside = {
     
     .framebuffet_publish_num_buffers = framebuffet_publish_num_buffers,
     .framebuffet_publish_update = framebuffet_publish_update,
+    .framebuffet_log_va = framebuffet_log_va,
+    
+    .framebuffet_get_source_instance = framebuffet_get_source_instance,
+    .framebuffet_get_num_buffers = framebuffet_get_num_buffers,
+    .framebuffet_get_buffer_configuration = framebuffet_get_buffer_configuration,
+    .framebuffet_copy_latest_frame = framebuffet_copy_latest_frame,
+    .framebuffet_wait_for_update_micros = framebuffet_wait_for_update_micros,
     
     .fbcollections_map_copy_with_payloads = fbcollections_map_copy_with_payloads,
     .fbcollections_map_find_key = fbcollections_map_find_key,
