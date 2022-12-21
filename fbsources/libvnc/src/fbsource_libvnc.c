@@ -93,6 +93,8 @@ static int set_wanted_connection_state(fbsource_libvnc_t *instance, vnc_state_t 
     cnd_broadcast(&instance->connection_state_wait);
     
     mtx_unlock(&instance->mutex); // TODO: how to handle an error?
+
+    return FBERROR_NONE;
 }
 
 static void destroy_client(rfbClient *client) {
@@ -699,11 +701,13 @@ static int fblibvnc_configure_module(void *data, fbcollections_map_entry_t *conf
     
     if (success) {
         FBLOG_DEBUG(instance->ext_instance_ref, "config success");
-        set_wanted_connection_state(instance, VNC_STATE_CONNECTED);
-        return FBERROR_NONE;
+        return set_wanted_connection_state(instance, VNC_STATE_CONNECTED);
     } else {
         FBLOG_DEBUG(instance->ext_instance_ref, "config failed");
-        set_wanted_connection_state(instance, VNC_STATE_DISCONNECTED);
+        int err = set_wanted_connection_state(instance, VNC_STATE_DISCONNECTED);
+        if (err != FBERROR_NONE) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to update wanted connection state to 'disconnected' after configuration failure (error: %d)", err);
+        }
         return FBERROR_UNSPECIFIC;
     }
 }
