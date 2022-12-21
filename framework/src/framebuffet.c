@@ -118,7 +118,7 @@ static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t 
     va_end(args);
 }
 
-void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args) {
     fbsource_module_instance_entry_t *module_instance_entry = instance_ref;
     framebuffet_t *framebuffet = module_instance_entry->framebuffet;
 
@@ -143,12 +143,14 @@ void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...)
     memcpy(internal_format + module_instance_entry->log_prefix_length, format, format_length);
     internal_format[internal_format_size - 1] = 0;
     
-    va_list args;
-    va_start(args, format);
-
     framebuffet_log_internal(framebuffet, level, internal_format, args);
     free(internal_format);
+}
 
+void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    framebuffet_log_va(instance_ref, level, format, args);
     va_end(args);
 }
 

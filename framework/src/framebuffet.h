@@ -1,6 +1,7 @@
 #ifndef FRAMEBUFFET_H
 #define FRAMEBUFFET_H
 
+#include <stdarg.h>
 #include <stdint.h>
 
 #ifdef HAVE_C11_THREADS
@@ -348,6 +349,7 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
 int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
 void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
 
 // API for general use
 framebuffet_t* framebuffet_init();
