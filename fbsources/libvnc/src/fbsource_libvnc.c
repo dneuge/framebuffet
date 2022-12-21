@@ -447,7 +447,7 @@ static int client_loop(void *data) {
             // it looks like we don't have anything to do, lock the mutex to check that's really the case
             FBLOG_DEBUG(instance->ext_instance_ref, "client loop goes to sleep");
             if (mtx_lock(&instance->mutex) == thrd_success) {
-                if (wanted_state == VNC_STATE_CLEARED) {
+                if (instance->wanted_connection_state == VNC_STATE_CLEARED) {
                     // confirmed that we have nothing to do, wait indefinitely
                     cnd_wait(&instance->connection_state_wait, &instance->mutex);
                 }
