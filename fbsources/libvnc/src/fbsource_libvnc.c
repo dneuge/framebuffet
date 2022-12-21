@@ -81,6 +81,8 @@ typedef struct {
     cnd_t connection_state_wait;
 } fbsource_libvnc_t;
 
+static tss_t *rfb_log_data_key = NULL;
+
 static int set_wanted_connection_state(fbsource_libvnc_t *instance, vnc_state_t state) {
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
@@ -256,6 +258,14 @@ static char* vnc_get_password(rfbClient *client) {
 }
 
 static rfbClient* create_rfb_client(fbsource_libvnc_t *instance) {
+    if (!rfb_log_data_key) {
+        FBLOG_WARN(instance->ext_instance_ref, "create_rfb_client: no TSS key for logging; messages from libvncclient will not be available through Frame Buffet");
+    } else {
+        if (tss_set(*rfb_log_data_key, instance) != thrd_success) {
+            FBLOG_WARN(instance->ext_instance_ref, "create_rfb_client: failed to store reference in TSS; messages from libvncclient will not be available through Frame Buffet");
+        }
+    }
+    
     rfbClient *client = rfbGetClient(VNC_BITS_PER_SAMPLE, VNC_SAMPLES_PER_PIXEL, VNC_BYTES_PER_PIXEL);
     client->MallocFrameBuffer = vnc_malloc_frame_buffer;
     client->canHandleNewFBSize = RFBBOOL_TRUE;
@@ -450,15 +460,122 @@ static int client_loop(void *data) {
     instance->actual_connection_state = VNC_STATE_TERMINATED;
 }
 
-static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
-    rfbClientLog = rfbClientErr = printf; // FIXME: add some logger, if possible scoped to instance (is that possible?)
-    rfbEnableClientLogging = RFBBOOL_TRUE;
+static void rfb_log(fblog_level_t level, const char *format, va_list args) {
+    fbsource_libvnc_t *instance = NULL;
+
+    // TODO: check if log level is enabled before processing
     
+    if (rfb_log_data_key) {
+        instance = tss_get(*rfb_log_data_key);
+    }
+
+    if (!instance) {
+        // fallback to just stdout/stderr using original format
+        FILE *stream = ((level == FBLOG_LEVEL_WARN) || (level == FBLOG_LEVEL_ERROR)) ? stderr : stdout;
+        vfprintf(stream, format, args);
+        return;
+    }
+
+    char *internal_format = NULL;
+
+    // the hostname we add to the format string must not contain % as it would get interpreted by *printf
+    char *safe_hostname = copy_string(instance->hostname ? instance->hostname : "null");
+    if (safe_hostname) {
+        int hostname_length = strlen(safe_hostname);
+        for (int i=0; i<hostname_length; i++) {
+            if (safe_hostname[i] == '%') {
+                safe_hostname[i] = '_';
+            }
+        }
+
+        int format_length = strlen(format);
+        int internal_format_size = format_length
+            + 17 /* "[libvncclient ", ":" and "] " */
+            + hostname_length
+            + (sizeof(int) * 3) + 1 /* not accurate but greater than necessary to fit all formatted port numbers including a minuts character for negative ones */
+            + 1; /* null termination */
+            
+        internal_format = malloc(internal_format_size);
+        if (internal_format) {
+            snprintf(internal_format, internal_format_size, "[libvncclient %s:%d] %s", safe_hostname, instance->port, format);
+            internal_format[internal_format_size - 1] = 0;
+            
+            // remove trailing line breaks from libvnc's format string
+            for (int i=strlen(internal_format)-1; i>0; i--) {
+                char ch = internal_format[i];
+                if ((ch == '\r') || (ch == '\n')) {
+                    internal_format[i] = 0;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+        
+    // submit to framework
+    char *actual_format = internal_format ? internal_format : (char*) format;
+    framebuffet_log_va(instance->ext_instance_ref, level, actual_format, args);
+        
+    if (safe_hostname) {
+        free(safe_hostname);
+    }
+    
+    if (internal_format) {
+        free(internal_format);
+    }
+}
+
+static void rfb_log_normal(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    rfb_log(FBLOG_LEVEL_DEBUG, format, args);
+
+    va_end(args);
+}
+
+static void rfb_log_error(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    rfb_log(FBLOG_LEVEL_WARN, format, args);
+
+    va_end(args);    
+}
+
+static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+    // libvncclient only has a single global logger configuration but we need to log instance-based
+    // we use thread-local storage to store a reference only visible to the thread actually running
+    // the client
+    // NOTE: this is not thread-safe, avoid concurrent instantiation
+    if (rfb_log_data_key) {
+        FBLOG_DEBUG(instance_ref, "TSS key for logging is already present");
+    } else {
+        FBLOG_DEBUG(instance_ref, "requesting TSS key for logging");
+        rfb_log_data_key = malloc(sizeof(tss_t));
+        if (!rfb_log_data_key) {
+            FBLOG_WARN(instance_ref, "failed to allocate memory for TSS key for logging");
+        } else if (tss_create(rfb_log_data_key, NULL) != thrd_success) {
+            FBLOG_WARN(instance_ref, "failed to create TSS key for logging");
+            free(rfb_log_data_key);
+            rfb_log_data_key = NULL;
+        } else {
+            FBLOG_DEBUG(instance_ref, "bind libvncclient log functions");
+            rfbClientLog = rfb_log_normal;
+            rfbClientErr = rfb_log_error;
+
+            FBLOG_DEBUG(instance_ref, "enable libvncclient logging");
+            rfbEnableClientLogging = RFBBOOL_TRUE;
+            
+            FBLOG_DEBUG(instance_ref, "instance-based libvncclient logging is enabled");
+        }
+    }
+
     fbsource_libvnc_t *instance = malloc(sizeof(fbsource_libvnc_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
     }
-  
+
     memset(instance, 0, sizeof(fbsource_libvnc_t));
 
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
