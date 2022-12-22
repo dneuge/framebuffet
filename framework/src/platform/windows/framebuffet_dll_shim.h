@@ -11,7 +11,7 @@ typedef void (*framebuffet_log_va_f)(void *instance_ref, fblog_level_t level, ch
 
 typedef fbsource_module_instance_entry_t* (*framebuffet_get_source_instance_f)(framebuffet_t* framebuffet, char *instance_name);
 typedef int (*framebuffet_get_num_buffers_f)(fbsource_module_instance_entry_t *source_instance);
-typedef fbsource_buffer_config_t* (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id);
+typedef int (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
 typedef int (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 typedef int (*framebuffet_wait_for_update_micros_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 

@@ -3,7 +3,7 @@
 // TODO: auto-generate; see framebuffet_dll_shim.c as well
 
 static const framebuffet_dll_shim_t _framebuffet_dll_shim_fwside = {
-    ._shim_hash = "58ec4908232ee8f5dc796d6c8030346ef360d7827e5aadd80a9dd1b084739c1a",
+    ._shim_hash = "57be754187e3a0d2ae3b6ed70a581c4606321ce003e2789b6f77508dfed1cd0a",
     ._shim_loaded = 0,
     
     .framebuffet_publish_num_buffers = framebuffet_publish_num_buffers,

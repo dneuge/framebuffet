@@ -817,8 +817,8 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t* source_instanc
     return source_instance->module->module->get_num_buffers(source_instance->data);
 }
 
-fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t* source_instance, int buffer_id) {
-    return source_instance->module->module->get_buffer_configuration(source_instance->data, buffer_id);
+int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+    return source_instance->module->module->get_buffer_configuration(source_instance->data, buffer_id, buffer_config);
 }
 
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {

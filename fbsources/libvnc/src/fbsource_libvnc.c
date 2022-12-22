@@ -724,33 +724,30 @@ static int fblibvnc_get_module_configuration(void *data, fbcollections_map_entry
     return FBERROR_NONE;
 }
 
-static fbsource_buffer_config_t* fblibvnc_get_buffer_configuration(void *data, int buffer_id) {
+static int fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_libvnc_t *instance = data;
+
+    if (!buffer_config) {
+        FBLOG_WARN(instance->ext_instance_ref, "get_buffer_configuration was called with null buffer_config");
+        return FBERROR_UNSPECIFIC;
+    }
   
     if (buffer_id != 0) {
         // this module only generates a single buffer
-        return NULL;
+        return FBERROR_NO_SUCH_BUFFER;
     }
-
-    fbsource_buffer_config_t *out = malloc(sizeof(fbsource_buffer_config_t));
-    if (out == NULL) {
-        return NULL;
-    }
-
-    memset(out, 0, sizeof(fbsource_buffer_config_t));
 
     if (mtx_lock(&instance->mutex) != thrd_success) {
-        free(out);
-        return NULL;
+        return FBERROR_UNSPECIFIC;
     }
   
-    out->width = instance->width;
-    out->height = instance->height;
-    out->size = instance->buffer_size;
+    buffer_config->width = instance->width;
+    buffer_config->height = instance->height;
+    buffer_config->size = instance->buffer_size;
 
     mtx_unlock(&instance->mutex); // TODO: handle error?
   
-    return out;
+    return FBERROR_NONE;
 }
 
 static int fblibvnc_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {

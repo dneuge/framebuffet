@@ -228,20 +228,18 @@ typedef int (*fbsource_get_module_config_f)(void *data, fbcollections_map_entry_
 typedef int (*fbsource_get_num_buffers_f)(void *data);
 
 /**
- * Returns a new data structure holding the configuration of the queried framebuffer on a module instance.
+ * Writes the configuration of the queried framebuffer of a module instance to the provided structure.
  * Call get_num_buffers to retrieve the number of available framebuffers of an instance.
  *
  * Memory/access constraints:
- * - The module must allocate the result to be returned.
- * - The module must not leave any memory allocated when returning NULL.
- * - The caller must expect NULL to be returned if the queried framebuffer is not available.
- * - The caller must free the result when no longer needed.
+ * - The caller must disregard any information stored on buffer_config if the call indicates an error.
  *
  * @param data module instance data as set on creation
  * @param buffer_id buffer to be queried, counting from 0
- * @return configuration of the queried frame buffer; NULL if unavailable
+ * @param buffer_config a pointer to the data structure to write the configuration of the queried frame buffer into
+ * @return error code, see FBERROR defines
  */
-typedef fbsource_buffer_config_t* (*fbsource_get_buffer_config_f)(void *data, int buffer_id);
+typedef int (*fbsource_get_buffer_config_f)(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config);
 
 /**
  * Copies the latest available frame to the specified destination address.
@@ -376,7 +374,7 @@ int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *sour
 int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance);
-fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id);
+int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 int framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);

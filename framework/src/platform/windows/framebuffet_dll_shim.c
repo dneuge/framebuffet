@@ -25,7 +25,7 @@
 // TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h | sha256sum
 
 static framebuffet_dll_shim_t _framebuffet_dll_shim = {
-    ._shim_hash = "58ec4908232ee8f5dc796d6c8030346ef360d7827e5aadd80a9dd1b084739c1a",
+    ._shim_hash = "57be754187e3a0d2ae3b6ed70a581c4606321ce003e2789b6f77508dfed1cd0a",
     ._shim_loaded = 0,
     0
 };
@@ -153,9 +153,9 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instanc
     return _framebuffet_dll_shim.framebuffet_get_num_buffers(source_instance);
 }
 
-fbsource_buffer_config_t* framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id) {
+int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
-    return _framebuffet_dll_shim.framebuffet_get_buffer_configuration(source_instance, buffer_id);
+    return _framebuffet_dll_shim.framebuffet_get_buffer_configuration(source_instance, buffer_id, buffer_config);
 }
 
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {

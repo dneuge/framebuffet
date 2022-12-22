@@ -155,10 +155,10 @@ int main(int argc, char *argv[]) {
     fbcollections_map_free_map_and_payloads(config);
   
     printf("querying FB config for buffer %d", buffer_id);
-    fbsource_buffer_config_t *fb_config = NULL;
+    fbsource_buffer_config_t fb_config;
     while (1) {
-        fb_config = framebuffet_get_buffer_configuration(source, buffer_id);
-        if (fb_config) {
+        res = framebuffet_get_buffer_configuration(source, buffer_id, &fb_config);
+        if (res == FBERROR_NONE) {
             break;
         }
 
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
   
-    unsigned long buffer_size = fb_config->size;
+    unsigned long buffer_size = fb_config.size;
   
     printf("allocating buffer, size=%ld\n", buffer_size);
     unsigned char *buffer = (unsigned char*) malloc(buffer_size);
