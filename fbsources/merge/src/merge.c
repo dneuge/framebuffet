@@ -38,7 +38,7 @@ typedef struct {
 
     unsigned char *buffers[2];
     int complete_buffer;
-} fbsource_crop_t;
+} fbsource_merge_t;
 
 static const struct timespec wait_for_source = {
     .tv_sec = 0,
@@ -48,7 +48,7 @@ static const struct timespec wait_for_source = {
 static const long wait_for_update_micros = 2000000; // 2s
 
 static int generate(void *data) {
-    fbsource_crop_t *instance = data;
+    fbsource_merge_t *instance = data;
     fbsource_module_instance_entry_t *source_instance = NULL;
     fbsource_buffer_config_t source_buffer_config;
 
@@ -156,7 +156,7 @@ static int generate(void *data) {
             
             got_source_token = TRUE;
 
-            // crop from source to target buffer
+            // merge from source to target buffer
             unsigned char *destination = buffer;
             unsigned char *source = source_start;
             for (int y=0; y<instance->height; y++) {
@@ -197,13 +197,13 @@ static int generate(void *data) {
     FBLOG_INFO(instance->ext_instance_ref, "source worker thread terminated");
 }
 
-static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
-    fbsource_crop_t *instance = malloc(sizeof(fbsource_crop_t));
+static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+    fbsource_merge_t *instance = malloc(sizeof(fbsource_merge_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
     }
 
-    memset(instance, 0, sizeof(fbsource_crop_t));
+    memset(instance, 0, sizeof(fbsource_merge_t));
 
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
         free(instance);
@@ -220,7 +220,7 @@ static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **da
     return FBERROR_NONE;
 }
 
-static int stop_generator_thread(fbsource_crop_t *instance) {
+static int stop_generator_thread(fbsource_merge_t *instance) {
     int out_error = FBERROR_NONE;
   
     if (!instance->has_generator_thread) {
@@ -238,8 +238,8 @@ static int stop_generator_thread(fbsource_crop_t *instance) {
     return out_error;
 }
 
-static int crop_destroy(void *data) {
-    fbsource_crop_t *instance = data;
+static int merge_destroy(void *data) {
+    fbsource_merge_t *instance = data;
   
     if (instance == NULL) {
         return FBERROR_NONE;
@@ -284,7 +284,7 @@ static char* copy_string(char* source) {
     return copy;
 }
 
-static void* get_config_pointer(fbsource_crop_t *instance, char *key) {
+static void* get_config_pointer(fbsource_merge_t *instance, char *key) {
     int key_size = strlen(key) + 1;
   
     fbcollections_map_entry_t *entry = fbcollections_map_find_key(instance->source_config, key, key_size);
@@ -295,7 +295,7 @@ static void* get_config_pointer(fbsource_crop_t *instance, char *key) {
     return entry->value;
 }
 
-static int get_config_int(fbsource_crop_t *instance, char *key, int default_value) {
+static int get_config_int(fbsource_merge_t *instance, char *key, int default_value) {
     char *value = get_config_pointer(instance, key);
     
     if (value == NULL) {
@@ -305,8 +305,8 @@ static int get_config_int(fbsource_crop_t *instance, char *key, int default_valu
     return atoi(value);
 }
 
-static int crop_configure_module(void *data, fbcollections_map_entry_t *config) {
-    fbsource_crop_t *instance = data;
+static int merge_configure_module(void *data, fbcollections_map_entry_t *config) {
+    fbsource_merge_t *instance = data;
 
     FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
 
@@ -387,19 +387,19 @@ static int crop_configure_module(void *data, fbcollections_map_entry_t *config) 
     return success ? FBERROR_NONE : FBERROR_UNSPECIFIC;
 }
 
-static int crop_get_num_buffers(void *data) {
+static int merge_get_num_buffers(void *data) {
     // this module only generates a single buffer
     return 1;
 }
 
-static int crop_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
-    fbsource_crop_t *instance = data;
+static int merge_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+    fbsource_merge_t *instance = data;
     *config = fbcollections_map_copy_with_payloads(instance->source_config);
     return FBERROR_NONE;
 }
 
-static int crop_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
-    fbsource_crop_t *instance = data;
+static int merge_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+    fbsource_merge_t *instance = data;
 
     if (!buffer_config) {
         FBLOG_WARN(instance->ext_instance_ref, "get_buffer_configuration was called with null as buffer_config");
@@ -425,8 +425,8 @@ static int crop_get_buffer_configuration(void *data, int buffer_id, fbsource_buf
     return FBERROR_NONE;
 }
 
-static int crop_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
-    fbsource_crop_t *instance = data;
+static int merge_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+    fbsource_merge_t *instance = data;
     int out_error = FBERROR_NONE;
   
     if (buffer_id != 0) {
@@ -451,24 +451,24 @@ static int crop_copy_latest_frame(void *data, unsigned char *destination, unsign
     return out_error;
 }
 
-static int crop_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
+static int merge_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     if (buffer_id != 0) {
         return FALSE;
     }
   
-    fbsource_crop_t *instance = data;
+    fbsource_merge_t *instance = data;
     return (last_token != instance->frame_token);
 }
 
-static const fbsource_module_t crop_module = {
-    ._create = crop_create,
-    ._destroy = crop_destroy,
-    .configure_module = crop_configure_module,
-    .get_num_buffers = crop_get_num_buffers,
-    .get_module_configuration = crop_get_module_configuration,
-    .get_buffer_configuration = crop_get_buffer_configuration,
-    .copy_latest_frame = crop_copy_latest_frame,
-    .has_update = crop_has_update
+static const fbsource_module_t merge_module = {
+    ._create = merge_create,
+    ._destroy = merge_destroy,
+    .configure_module = merge_configure_module,
+    .get_num_buffers = merge_get_num_buffers,
+    .get_module_configuration = merge_get_module_configuration,
+    .get_buffer_configuration = merge_get_buffer_configuration,
+    .copy_latest_frame = merge_copy_latest_frame,
+    .has_update = merge_has_update
 };
 
-FBSOURCE_MODULE_DESCRIPTOR(crop, "Crop", FBMODULE_LICENSE_MIT, crop_module)
+FBSOURCE_MODULE_DESCRIPTOR(merge, "Merge", FBMODULE_LICENSE_MIT, merge_module)
