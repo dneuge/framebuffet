@@ -83,6 +83,12 @@ typedef struct {
 
 static tss_t *rfb_log_data_key = NULL;
 
+static const struct timespec failed_connection_delay = {
+    // TODO: make configurable
+    .tv_sec = 2,
+    .tv_nsec = 0
+};
+
 static int set_wanted_connection_state(fbsource_libvnc_t *instance, vnc_state_t state) {
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
@@ -369,6 +375,9 @@ static int client_loop(void *data) {
 
                 // prevent state clearing
                 wanted_state = VNC_STATE_ERROR;
+
+                // wait a moment to not run berzerk if repeated connection failures happen with very low delay
+                thrd_sleep(&failed_connection_delay, NULL);
             }
             /*
             if (ConnectToRFBServer(client, client->serverHost, client->serverPort)) {
