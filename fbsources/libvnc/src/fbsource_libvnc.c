@@ -205,6 +205,8 @@ static rfbBool vnc_malloc_frame_buffer(rfbClient *client) {
     }
 
     mtx_unlock(&instance->mutex);
+    
+    framebuffet_publish_num_buffers(instance->ext_instance_ref, success ? 1 : 0);
 
     return success ? RFBBOOL_TRUE : RFBBOOL_FALSE;
 }
@@ -616,7 +618,7 @@ static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void 
     
     *data = instance;
 
-    framebuffet_publish_num_buffers(instance_ref, 1);
+    framebuffet_publish_num_buffers(instance_ref, 0);
     
     return FBERROR_NONE;
 }
@@ -723,8 +725,9 @@ static int fblibvnc_configure_module(void *data, fbcollections_map_entry_t *conf
 }
 
 static int fblibvnc_get_num_buffers(void *data) {
-    // this module only generates a single buffer
-    return 1;
+    // this module only generates a single buffer, available when VNC has finished session initialization
+    fbsource_libvnc_t *instance = data;
+    return instance->buffer_size ? 1 : 0;
 }
 
 static int fblibvnc_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
@@ -742,7 +745,6 @@ static int fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource
     }
   
     if (buffer_id != 0) {
-        // this module only generates a single buffer
         return FBERROR_NO_SUCH_BUFFER;
     }
 
@@ -755,7 +757,12 @@ static int fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource
     buffer_config->size = instance->buffer_size;
 
     mtx_unlock(&instance->mutex); // TODO: handle error?
-  
+
+    if (!buffer_config->size) {
+        // VNC is not connected, the buffer does not exist at this time
+        return FBERROR_NO_SUCH_BUFFER;
+    }
+    
     return FBERROR_NONE;
 }
 
@@ -763,7 +770,7 @@ static int fblibvnc_copy_latest_frame(void *data, unsigned char *destination, un
     fbsource_libvnc_t *instance = data;
     int out_error = FBERROR_NONE;
   
-    if (buffer_id != 0) {
+    if (buffer_id != 0 && !instance->buffer_size) {
         return FBERROR_NO_SUCH_BUFFER;
     }
 
