@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #ifdef HAVE_C11_THREADS
@@ -15,6 +16,59 @@ typedef short bool;
 #define FALSE 0
 #define TRUE 1
 
+/* Use fixed buffers as we need to keep a copy of the latest state around anyways,
+   so we don't actually need to alternate between buffers. */
+#define FBSOURCE_MERGE_COMPLETE_BUFFER_ID 0
+#define FBSOURCE_MERGE_WORK_BUFFER_ID 1
+
+#define FBSOURCE_MERGE_AUTO (-1)
+
+#define FBSOURCE_MERGE_SUBCONFIG_KEY_BUFFER_SIZE 65
+
+typedef struct {
+    void *instance;
+    
+    mtx_t mutex;
+    cnd_t wait;
+    
+    thrd_t thread;
+    bool has_thread;
+    
+    bool reconfigure;
+    bool wait_for_update;
+    
+    bool update_available;
+    
+    char *name;
+    int buffer_id;
+
+    fbsource_module_instance_entry_t *source_instance;
+    fbsource_token_t token;
+    bool got_token;
+    
+    unsigned long buffer_size;
+    unsigned char *buffer;
+    unsigned int width;
+    unsigned int height;
+} fbsource_merge_source_t;
+
+typedef struct {
+    fbsource_merge_source_t *source;
+    
+    int src_x;
+    int src_y;
+    int src_w;
+    int src_h;
+    int dst_x;
+    int dst_y;
+} fbsource_merge_area_t;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} fbsource_merge_color_t;
+
 typedef struct {
     mtx_t mutex;
 
@@ -24,30 +78,483 @@ typedef struct {
     bool stop_generator;
     thrd_t generator_thread;
     bool has_generator_thread;
+    
+    bool source_update_available;
+    mtx_t source_update_wait_mutex;
+    cnd_t source_update_wait;
 
     fbsource_token_t frame_token;
     fbcollections_map_entry_t* source_config;
 
-    char *source_name;
-    int source_buffer_id;
-    unsigned int width;
-    unsigned int height;
-    unsigned int x;
-    unsigned int y;
-    unsigned long buffer_size;
+    int num_areas;
+    fbsource_merge_area_t *areas;
+
+    int width;
+    int height;
+    fbsource_merge_color_t base_color;
 
     unsigned char *buffers[2];
-    int complete_buffer;
+    unsigned long buffer_size;
 } fbsource_merge_t;
 
-static const struct timespec wait_for_source = {
+static const struct timespec sleep_for_source = {
     .tv_sec = 0,
     .tv_nsec = 500000000 // 500ms
 };
 
+#define FBSOURCE_MERGE_WAIT_FOR_UPDATE_MICROS 200000 /* 200 ms */
+
+static const struct timespec sleep_for_update_fallback = {
+    .tv_sec = FBSOURCE_MERGE_WAIT_FOR_UPDATE_MICROS / 1000000,
+    .tv_nsec = (FBSOURCE_MERGE_WAIT_FOR_UPDATE_MICROS % 1000000) * 1000
+};
+
+#define FBSOURCE_MERGE_WAIT_FOR_STATE_CHANGE_MICROS 2000000 /* 2 seconds */
+
+static const struct timespec sleep_for_state_change_fallback = {
+    .tv_sec = FBSOURCE_MERGE_WAIT_FOR_STATE_CHANGE_MICROS / 1000000,
+    .tv_nsec = (FBSOURCE_MERGE_WAIT_FOR_STATE_CHANGE_MICROS % 1000000) * 1000
+};
+
+/**
+ * Periodic wakeup while waiting for source updates.
+ * Influences possible shutdown/reconfiguration delay due to shutdown check depending
+ * on source update thread to be unlocked for shutdown check.
+ */
 static const long wait_for_update_micros = 2000000; // 2s
 
+static const struct timespec zero_timespec = {
+    .tv_sec = 0,
+    .tv_nsec = 0
+};
+
+static inline struct timespec get_timespec_from_now(uint32_t microseconds) {
+    // FIXME: not fully tested/verified
+    // TODO: copied from framework; extract to utility module?
+    
+    struct timespec end;
+    if (!timespec_get(&end, TIME_UTC)) {
+        return zero_timespec;
+    }
+
+    time_t seconds_to_add = microseconds / 1000000;
+    long nanoseconds_to_add = (microseconds % 1000000) * 1000;
+
+    // add to timestamp
+    end.tv_sec += seconds_to_add;
+    end.tv_nsec += nanoseconds_to_add;
+
+    // overflow to seconds
+    end.tv_sec += end.tv_nsec / 1000000000;
+    end.tv_nsec = end.tv_nsec % 1000000000;
+
+    return end;
+}
+
+static inline fbsource_merge_area_t* get_area_pointer(fbsource_merge_t *instance, int area_id) {
+    if (!instance->areas || (instance->num_areas <= 0)) {
+        FBLOG_WARN(instance->ext_instance_ref, "get_area_pointer was called but no areas have been recorded");
+        return NULL;
+    }
+    
+    if ((area_id < 0) || (area_id >= instance->num_areas)) {
+        FBLOG_WARN(instance->ext_instance_ref, "out of bounds access to area pointer: requested area %d but got only %d records", area_id, instance->num_areas);
+        return NULL;
+    }
+
+    return &(instance->areas[area_id]);
+}
+
+static bool source_reset(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+    if (mtx_lock(&source->mutex) != thrd_success) {
+        FBLOG_WARN("[source %s #%d] failed to lock mutex before clearing state", source->name, source->buffer_id);
+        return FALSE;
+    }
+        
+    source->reconfigure = FALSE;
+    source->update_available = FALSE;
+    source->got_token = FALSE;
+    source->buffer_size = 0;
+    source->width = 0;
+    source->height = 0;
+
+    if (source->buffer) {
+        free(source->buffer);
+        source->buffer = NULL;
+    }
+
+    mtx_unlock(&source->mutex);
+
+    return TRUE;
+}
+
+static void source_wait_for_update(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+    // clear request
+    source->wait_for_update = FALSE;
+
+    if (!source->got_token) {
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] got instructed to wait for an update but there is no token from previous retrieval, assuming there will be one", source->name, source->buffer_id);
+        source->update_available = TRUE;
+        instance->source_update_available = TRUE;
+        cnd_broadcast(&instance->source_update_wait);
+        return;
+    }
+
+    //FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] waiting", source->name, source->buffer_id);
+
+    int res = framebuffet_wait_for_update_micros(source->source_instance, source->buffer_id, source->token, wait_for_update_micros);
+    if (res == FBERROR_NO_FRAME) {
+        // got no frame yet; return to main loop to check for state changes but return to waiting state if nothing more important comes up
+        source->wait_for_update = TRUE;
+    } else if (res == FBERROR_NONE) {
+        // got an update, flag source and notify main thread
+        source->update_available = TRUE;
+        instance->source_update_available = TRUE;
+        cnd_broadcast(&instance->source_update_wait);
+    } else {
+        // something went wrong that requires reinitialization
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] waiting for an update failed with error %d, will reconfigure", source->name, source->buffer_id, res);
+        source->reconfigure = TRUE;
+    }
+}
+
+static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+    // kept local for search; only stored on struct if everything is ready for processing
+    fbsource_module_instance_entry_t *source_instance = NULL;
+    fbsource_buffer_config_t source_buffer_config;
+    char *buffer = NULL;
+    
+    int res;
+
+    FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] (re)configuring", source->name, source->buffer_id);
+
+    // clear reconfiguration request
+    source->reconfigure = FALSE;
+
+    // clear any previous state
+    if (!source_reset(instance, source)) {
+        FBLOG_WARN("[source %s #%d] failed to clear state before reconfiguration; terminating...", source->name, source->buffer_id);
+        return FALSE;
+    }
+        
+    // source may not be immediately available, wait until it has been created
+    while (!instance->stop_generator) {
+        FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] searching source instance", source->name, source->buffer_id);
+        source_instance = framebuffet_get_source_instance(instance->framebuffet, source->name);
+        if (source_instance) {
+            int source_num_buffers = framebuffet_get_num_buffers(source_instance);
+            FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] source instance found, reports %d buffers", source->name, source->buffer_id, source_num_buffers);
+            if (source_num_buffers >= source->buffer_id) {
+                res = framebuffet_get_buffer_configuration(source_instance, source->buffer_id, &source_buffer_config);
+                if (res != FBERROR_NONE) {
+                    FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] source failed to report buffer config (error %d)", source->name, source->buffer_id, res);
+                } else {
+                    FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] source reports width=%u, height=%u, buffer_size=%lu", source->name, source->buffer_id, source_buffer_config.width, source_buffer_config.height, source_buffer_config.size);
+
+                    bool has_required_dimensions = (source_buffer_config.width >= 0 && source_buffer_config.height >= 0);
+                    if (has_required_dimensions) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] found source buffer with required dimensions", source->name, source->buffer_id);
+                        break;
+                    }
+
+                    FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] source buffer is too small", source->name, source->buffer_id);
+                }
+            }
+        }
+            
+        FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] source instance has not been found yet, waiting...", source->name, source->buffer_id);
+        source_instance = NULL;
+        thrd_sleep(&sleep_for_source, NULL);
+    }
+
+    if (!source_instance) {
+        // configuration loop aborted without completing
+        // this should only happen when the thread should terminate, so abort as well
+        FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] search loop aborted, terminating", source->name, source->buffer_id);
+        return FALSE;
+    }
+
+    buffer = malloc(source_buffer_config.size);
+    if (!buffer) {
+        // out of memory (or something like that); there's nothing we can do but terminate
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to allocate source buffer (%lu bytes), terminating", source->name, source->buffer_id, source_buffer_config.size);
+        return FALSE;
+    }
+    memset(buffer, 0, source_buffer_config.size);
+
+    FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] source acquired, activating", source->name, source->buffer_id);
+
+    // transfer to struct
+    if (mtx_lock(&source->mutex) != thrd_success) {
+        FBLOG_WARN("[source %s #%d] failed to lock mutex before activating source", source->name, source->buffer_id);
+    }
+        
+    source->got_token = FALSE;
+    source->source_instance = source_instance;
+    source->width = source_buffer_config.width;
+    source->height = source_buffer_config.height;
+    source->buffer_size = source_buffer_config.size;
+    source->buffer = buffer;
+
+    source->update_available = TRUE; // has to come last as it will be checked without locking the mutex first
+        
+    mtx_unlock(&source->mutex);
+
+    // notify main thread about the available update
+    instance->source_update_available = TRUE;
+    cnd_broadcast(&instance->source_update_wait);
+
+    FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] source activated", source->name, source->buffer_id);
+
+    return TRUE;
+}
+
+static int source_run(void *data) {
+    fbsource_merge_source_t *source = data;
+    fbsource_merge_t *instance = source->instance;
+    
+    int res;
+
+    FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] worker thread started", source->name, source->buffer_id);
+
+    source->reconfigure = TRUE;
+    source->wait_for_update = FALSE;
+
+    bool reconfigure;
+    bool wait_for_update;
+    
+    while (!instance->stop_generator) {
+        FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] loop iteration", source->name, source->buffer_id);
+        
+        // wait until asked either to wait for a frame update or to reconfigure
+        reconfigure = source->reconfigure;
+        wait_for_update = source->wait_for_update;
+    
+        if (!(wait_for_update || reconfigure)) {
+            struct timespec cnd_timeout = get_timespec_from_now(FBSOURCE_MERGE_WAIT_FOR_STATE_CHANGE_MICROS);
+            if (mtx_lock(&source->mutex) != thrd_success) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] failed to lock mutex to wait for state change, will sleep instead", source->name, source->buffer_id);
+                if (thrd_sleep(&sleep_for_state_change_fallback, NULL) < -1) {
+                    FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] error while sleeping (non-mutex fallback) to wait for state change, terminating...", source->name, source->buffer_id);
+                    break;
+                }
+            } else {
+                res = thrd_success; // don't fail below
+
+                // check again to confirm while holding the mutex
+                if (!(source->wait_for_update || source->reconfigure)) {
+                    res = cnd_timedwait(&source->wait, &source->mutex, &cnd_timeout);
+                }
+
+                // refresh requested state change while still holding the mutex
+                reconfigure = source->reconfigure;
+                wait_for_update = source->wait_for_update;
+                
+                mtx_unlock(&source->mutex);
+                
+                if ((res != thrd_success) && (res != thrd_timedout)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] error while waiting for state change with mutex condition, terminating...", source->name, source->buffer_id);
+                    break;
+                }
+            }
+        }
+        
+        if (wait_for_update) {
+            source_wait_for_update(instance, source);
+        } else if (reconfigure) {
+            if (!source_reconfigure(instance, source)) {
+                FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to configure, terminating...", source->name, source->buffer_id);
+            }
+        }
+    }
+
+    FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] shutting down", source->name, source->buffer_id);
+
+    if (!source_reset(instance, source)) {
+        FBLOG_WARN("[source %s #%d] failed to clear state on thread shutdown", source->name, source->buffer_id);
+    }
+    
+    FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] worker thread terminated", source->name, source->buffer_id);
+    
+    return FBERROR_NONE;
+}
+
 static int generate(void *data) {
+    fbsource_merge_t *instance = data;
+    int res;
+
+    FBLOG_INFO(instance->ext_instance_ref, "[main] worker thread started");
+    
+    unsigned int instance_line_bytes = instance->width * 3;
+    
+    while (!instance->stop_generator) {
+        FBLOG_TRACE(instance->ext_instance_ref, "[main] loop iteration");
+        
+        // wait until any source has been updated
+        if (!instance->source_update_available) {
+            struct timespec cnd_timeout = get_timespec_from_now(FBSOURCE_MERGE_WAIT_FOR_UPDATE_MICROS);
+            if (mtx_lock(&instance->source_update_wait_mutex) != thrd_success) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "[main] failed to lock mutex to wait for update, will sleep instead");
+                if (thrd_sleep(&sleep_for_update_fallback, NULL) < -1) {
+                    FBLOG_WARN(instance->ext_instance_ref, "[main] error while sleeping (non-mutex fallback) to wait for an update, terminating...");
+                    break;
+                }
+            } else {
+                res = thrd_success; // don't fail below if an update appeared while waiting for the mutex
+                if (!instance->source_update_available) {
+                    // state did not change while we were waiting to lock the mutex; wait on the condition
+                    res = cnd_timedwait(&instance->source_update_wait, &instance->source_update_wait_mutex, &cnd_timeout);
+                }
+                mtx_unlock(&instance->source_update_wait_mutex);
+                
+                if ((res != thrd_success) && (res != thrd_timedout)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "[main] error while waiting for update with mutex condition, terminating...");
+                    break;
+                }
+            }
+        }
+
+        if (!instance->source_update_available) {
+            continue;
+        }
+
+        instance->source_update_available = FALSE;
+
+        FBLOG_TRACE(instance->ext_instance_ref, "[main] source update has been indicated");
+
+        bool success = TRUE;
+        bool updated = FALSE;
+        for (int i=0; i<instance->num_areas; i++) {
+            // source_area is only used to process the first encounter of a source
+            // individual areas for that source are processed below
+            fbsource_merge_area_t *source_area = get_area_pointer(instance, i);
+            if (!source_area) {
+                FBLOG_WARN(instance->ext_instance_ref, "[main] failed to get pointer for area %d, terminating...", i);
+                break;
+            }
+
+            fbsource_merge_source_t *source = source_area->source;
+            if (!source) {
+                FBLOG_WARN(instance->ext_instance_ref, "[main] missing source for area %d, terminating...", i);
+                break;
+            }
+
+            // skip sources that have no update or haven't been configured yet (quick check before locking mutex)
+            if (!source->update_available || !source->buffer || !source->source_instance || !source->buffer_size || !source->width || !source->height) {
+                continue;
+            }
+            
+            if (mtx_lock(&source->mutex) != thrd_success) {
+                FBLOG_WARN(instance->ext_instance_ref, "[main] failed to lock mutex for source %s #%d, terminating...", source->name, source->buffer_id);
+                success = FALSE;
+                break;
+            }
+            
+            // check source availability again and skip if unusable (with mutex; might have changed)
+            if (!source->update_available || !source->buffer || !source->source_instance || !source->buffer_size || !source->width || !source->height) {
+                mtx_unlock(&source->mutex);
+                continue;
+            }
+
+            FBLOG_TRACE(instance->ext_instance_ref, "[main] processing update for source %s #%d", source->name, source->buffer_id);
+
+            res = framebuffet_copy_latest_frame(source->source_instance, source->buffer, source->buffer_size, source->buffer_id, &source->token);
+            source->got_token = TRUE;
+            
+            if (res != FBERROR_NONE) {
+                FBLOG_WARN(instance->ext_instance_ref, "[main] update for source %s #%d failed (error %d); requesting reconfiguration", source->name, source->buffer_id, res);
+                source->reconfigure = TRUE;
+            } else {
+                unsigned int source_line_bytes = source->width * 3;
+                
+                for (int j=0; j<instance->num_areas; j++) {
+                    fbsource_merge_area_t *area = get_area_pointer(instance, j);
+                    if (area->source != source) {
+                        // will be revisited later if the other source has an update
+                        continue;
+                    }
+                    
+                    int wanted_width = (area->src_w == FBSOURCE_MERGE_AUTO) ? source->width : area->src_w;
+                    int wanted_height = (area->src_h == FBSOURCE_MERGE_AUTO) ? source->height : area->src_h;
+
+                    // reduce source area as needed to fit in source frame bounds
+                    // TODO: calculate on source reconfiguration
+                    if (area->src_x + wanted_width >= source->width) {
+                        wanted_width = source->width - area->src_x;
+                    }
+                    
+                    if (area->src_y + wanted_height >= source->height) {
+                        wanted_height = source->height - area->src_y;
+                    }
+
+                    // reduce as needed to fit in destination frame bounds
+                    if (area->dst_x + wanted_width >= instance->width) {
+                        wanted_width = instance->width - area->dst_x;
+                    }
+                    
+                    if (area->dst_y + wanted_height >= instance->height) {
+                        wanted_height = instance->height - area->dst_y;
+                    }
+
+                    // skip area if there is nothing left to copy after area reduction
+                    if ((wanted_width < 1) || (wanted_height < 1)) {
+                        continue;
+                    }
+                    
+                    unsigned char *source_start = source->buffer + (area->src_y * source->width * 3) + (area->src_x * 3);
+                    unsigned int wanted_line_bytes = wanted_width * 3;
+                    
+                    // merge from source to target buffer
+                    unsigned char *destination = instance->buffers[FBSOURCE_MERGE_WORK_BUFFER_ID] + (area->dst_y * instance_line_bytes) + (area->dst_x * 3);
+                    unsigned char *source = source_start;
+                    for (int line=0; line<wanted_height; line++) {
+                        memcpy(destination, source, wanted_line_bytes);
+                        source += source_line_bytes;
+                        destination += instance_line_bytes;
+                    }
+
+                    updated = TRUE;
+                }
+            }
+
+            source->update_available = FALSE;
+            source->wait_for_update = TRUE;
+            cnd_broadcast(&source->wait);
+
+            mtx_unlock(&source->mutex);
+        }
+
+        // copy result to complete buffer for output, update token and notify framework
+        if (updated) {
+            if (mtx_lock(&instance->mutex) != thrd_success) {
+                FBLOG_WARN(instance->ext_instance_ref, "[main] failed to lock instance mutex for copy; dropping frame");
+                continue;
+            }
+  
+            memcpy(instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID], instance->buffers[FBSOURCE_MERGE_WORK_BUFFER_ID], instance->buffer_size);
+
+            instance->frame_token++;
+
+            mtx_unlock(&instance->mutex);
+
+            framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
+        }
+
+        if (!success) {
+            break;
+        }
+    }
+
+    // in case of an error, stop all source threads as well because we don't need them any more
+    instance->stop_generator = TRUE;
+
+    FBLOG_INFO(instance->ext_instance_ref, "[main] worker thread terminated");
+
+    return FBERROR_NONE;
+}
+
+/*
+static int generate_crop(void *data) {
     fbsource_merge_t *instance = data;
     fbsource_module_instance_entry_t *source_instance = NULL;
     fbsource_buffer_config_t source_buffer_config;
@@ -64,7 +571,7 @@ static int generate(void *data) {
 
     int res;
 
-    FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
+    FBLOG_INFO(instance->ext_instance_ref, "main worker thread started");
     
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
@@ -196,6 +703,7 @@ static int generate(void *data) {
 
     FBLOG_INFO(instance->ext_instance_ref, "source worker thread terminated");
 }
+*/
 
 static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     fbsource_merge_t *instance = malloc(sizeof(fbsource_merge_t));
@@ -206,6 +714,22 @@ static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **d
     memset(instance, 0, sizeof(fbsource_merge_t));
 
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
+        FBLOG_WARN(instance_ref, "failed to create instance mutex");
+        free(instance);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (mtx_init(&instance->source_update_wait_mutex, mtx_plain) != thrd_success) {
+        FBLOG_WARN(instance_ref, "failed to create source wait mutex");
+        mtx_destroy(&instance->mutex);
+        free(instance);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (cnd_init(&instance->source_update_wait) != thrd_success) {
+        FBLOG_WARN(instance_ref, "failed to create source wait condition");
+        mtx_destroy(&instance->source_update_wait_mutex);
+        mtx_destroy(&instance->mutex);
         free(instance);
         return FBERROR_UNSPECIFIC;
     }
@@ -220,22 +744,102 @@ static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **d
     return FBERROR_NONE;
 }
 
-static int stop_generator_thread(fbsource_merge_t *instance) {
+static int destroy_source_thread(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+    // should not fail on repeated calls, multiple areas can share a single source
+    
+    int err = FBERROR_NONE;
+
+    if (!source->has_thread) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "source thread %s #%d is indicated as non-existent, skipping join", source->name, source->buffer_id);
+    } else {
+        FBLOG_DEBUG(instance->ext_instance_ref, "joining source thread %s #%d", source->name, source->buffer_id);
+
+        cnd_broadcast(&source->wait);
+        
+        int thread_res;
+        if (thrd_join(source->thread, &thread_res) == thrd_success) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "joined source thread %s #%d, freeing resources", source->name, source->buffer_id);
+            source->has_thread = FALSE;
+        } else {
+            // TODO: what else can be done if joining the thread fails?
+            FBLOG_WARN(instance->ext_instance_ref, "failed to join source thread %s #%d", source->name, source->buffer_id);
+            err = FBERROR_UNSPECIFIC;
+
+            // resources must not be released as the thread will continue to run and would crash the application
+            goto end;
+        }
+    }
+
+    if (source->name) {
+        free(source->name);
+        source->name = NULL;
+    }
+
+    if (source->buffer) {
+        free(source->buffer);
+        source->buffer = NULL;
+    }
+
+    cnd_destroy(&source->wait);
+    mtx_destroy(&source->mutex);
+
+    FBLOG_TRACE(instance->ext_instance_ref, "freed resources");
+    
+ end:
+    return err;
+}
+
+static int destroy_source_threads(fbsource_merge_t *instance) {
     int out_error = FBERROR_NONE;
+    
+    for (int i=0; i<instance->num_areas; i++) {
+        fbsource_merge_area_t *area = get_area_pointer(instance, i);
+        if (!area) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to get area pointer for area %d during thread destruction", i);
+            continue;
+        }
+
+        if (!area->source) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "source for area %d has already been destroyed", i);
+        } else {
+            FBLOG_DEBUG(instance->ext_instance_ref, "destroying source at %p for area %d", area->source, i);
+            int err = destroy_source_thread(instance, area->source);
+            if (err == FBERROR_NONE) {
+                area->source = NULL;
+            } else {
+                out_error = err;
+            }
+        }
+    }
+
+    return out_error;
+}
+
+static int destroy_threads(fbsource_merge_t *instance) {
+    int err = FBERROR_NONE;
   
     if (!instance->has_generator_thread) {
         return FBERROR_NONE;
     }
-  
+
+    // generic stop variable is also monitored by all source threads
     instance->stop_generator = TRUE;
+
     int thread_res;
     if (thrd_join(instance->generator_thread, &thread_res) != thrd_success) {
         // TODO: what else can be done if joining the thread fails?
-        out_error = FBERROR_UNSPECIFIC;
+        FBLOG_WARN(instance->ext_instance_ref, "failed to join generator thread; resources will not be freed and source threads will not be destroyed either");
+        return FBERROR_UNSPECIFIC;
     }
     instance->has_generator_thread = FALSE;
 
-    return out_error;
+    err = destroy_source_threads(instance);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to destroy source threads (error %d)", err);
+        return err;
+    }
+
+    return FBERROR_NONE;
 }
 
 static int merge_destroy(void *data) {
@@ -245,14 +849,14 @@ static int merge_destroy(void *data) {
         return FBERROR_NONE;
     }
 
-    int out_error = stop_generator_thread(instance);
+    int out_error = destroy_threads(instance);
+    if (out_error != FBERROR_NONE) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to destroy threads; resources cannot be freed, processing may not have terminated");
+        return FBERROR_UNSPECIFIC;
+    }
 
     fbcollections_map_free_map_and_payloads(instance->source_config);
 
-    if (instance->source_name) {
-        free(instance->source_name);
-    }
-    
     if (instance->buffers[0]) {
         free(instance->buffers[0]);
     }
@@ -261,11 +865,19 @@ static int merge_destroy(void *data) {
         free(instance->buffers[1]);
     }
 
-    // FIXME: make sure nothing is waiting for the mutex before it gets destroyed
+    if (instance->areas) {
+        free(instance->areas);
+    }
+    
+    // FIXME: make sure nothing is waiting for mutexes before they are destroyed
   
+    cnd_destroy(&instance->source_update_wait);
+    mtx_destroy(&instance->source_update_wait_mutex);
+    
     mtx_destroy(&instance->mutex);
+
     free(instance);
-  
+
     return out_error;
 }
 
@@ -305,12 +917,106 @@ static int get_config_int(fbsource_merge_t *instance, char *key, int default_val
     return atoi(value);
 }
 
+static int num_uint_digits(unsigned int x) {
+    int digits = 1;
+    while ((x /= 10) != 0) {
+        digits++;
+    }
+    return digits;
+}
+
+static bool build_area_config_key(char *buffer, size_t buffer_size, unsigned int area_id, char *sub_key) {
+    size_t expected_length = 8 + num_uint_digits(area_id) + strlen(sub_key);
+    if (snprintf(buffer, buffer_size, "areas[%d].%s", area_id, sub_key) != expected_length) {
+        buffer[0] = 0;
+        return FALSE;
+    }
+    buffer[buffer_size - 1] = 0;
+    return TRUE;
+}
+
+static char* copy_config_string(fbsource_merge_t *instance, char *key, char *default_value) {
+    char *value = get_config_pointer(instance, key);
+    return copy_string(value ? value : default_value);
+}
+
+static char* copy_subconfig_string(fbsource_merge_t *instance, int area_id, char *sub_key, char *default_value) {
+    char key[FBSOURCE_MERGE_SUBCONFIG_KEY_BUFFER_SIZE] = {0};
+    if (!build_area_config_key(key, FBSOURCE_MERGE_SUBCONFIG_KEY_BUFFER_SIZE, area_id, sub_key)) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to build subconfig key \"%s\" for area %d, using default value \"%s\"", sub_key, area_id, default_value);
+        return copy_string(default_value);
+    }
+    
+    return copy_config_string(instance, key, default_value);
+}
+
+static int get_subconfig_int(fbsource_merge_t *instance, int area_id, char *sub_key, int default_value) {
+    char key[FBSOURCE_MERGE_SUBCONFIG_KEY_BUFFER_SIZE] = {0};
+    if (!build_area_config_key(key, FBSOURCE_MERGE_SUBCONFIG_KEY_BUFFER_SIZE, area_id, sub_key)) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to build subconfig key \"%s\" for area %d, using default value %d", sub_key, area_id, default_value);
+        return default_value;
+    }
+
+    return get_config_int(instance, key, default_value);
+}
+
+static bool parse_color(char *s, fbsource_merge_color_t *out) {
+    // TODO: implement web color lookup
+    // TODO: implement HTML color definition parsing (hex triple)
+    
+    if (!s) {
+        return FALSE;
+    }
+    
+    if (!strcmp(s, "black")) {
+        out->red = 0;
+        out->green = 0;
+        out->blue = 0;
+        return TRUE;
+    }
+
+    if (!strcmp(s, "white")) {
+        out->red = 255;
+        out->green = 255;
+        out->blue = 255;
+        return TRUE;
+    }
+
+    if (!strcmp(s, "magenta")) {
+        out->red = 255;
+        out->green = 0;
+        out->blue = 255;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static void fill_with_color(unsigned char *buffer, fbsource_merge_color_t color, long size) {
+    // subtract the last half-open pixel in case the buffer size does not fit all data
+    size -= (size % 3);
+    
+    int i = 0;
+    while (i < size) {
+        buffer[i++] = color.red;
+        buffer[i++] = color.green;
+        buffer[i++] = color.blue;
+    }
+}
+
 static int merge_configure_module(void *data, fbcollections_map_entry_t *config) {
+    // NOTE: this is not thread-safe because destruction of threads may not have finished by a simultaneous call
+    
     fbsource_merge_t *instance = data;
+    int out_error = FBERROR_NONE;
 
     FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
 
-    stop_generator_thread(instance);
+    int err = destroy_threads(instance);
+    if (err != FBERROR_NONE) {
+        FBLOG_WARN(instance->ext_instance_ref, "unable to reconfigure, previous threads could not be destroyed (error %d)", err);
+        return err;
+    }
   
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
@@ -319,42 +1025,244 @@ static int merge_configure_module(void *data, fbcollections_map_entry_t *config)
     fbcollections_map_free_map_and_payloads(instance->source_config);
     instance->source_config = fbcollections_map_copy_with_payloads(config);
     if (instance->source_config == NULL) {
-        mtx_unlock(&instance->mutex); // TODO: handle mtx_unlock error
+        mtx_unlock(&instance->mutex);
+        FBLOG_WARN(instance->ext_instance_ref, "failed to copy source module configuration to instance");
         return FBERROR_UNSPECIFIC;
     }
   
     // release old buffers
-    if (instance->buffer_size > 0) {
+    if (instance->buffers[0]) {
         free(instance->buffers[0]);
+    }
+
+    if (instance->buffers[1]) {
         free(instance->buffers[1]);
     }
 
     instance->buffers[0] = NULL;
     instance->buffers[1] = NULL;
-    instance->complete_buffer = 0;
 
-    // apply configuration
-    if (instance->source_name) {
-        free(instance->source_name);
+    // release areas
+    if (instance->areas) {
+        free(instance->areas);
+        instance->areas = NULL;
     }
-    instance->source_name = copy_string(get_config_pointer(instance, "source.name"));
     
-    instance->source_buffer_id = get_config_int(instance, "source.bufferId", 0);    
+    instance->num_areas = 0;
+    
+    // apply general generator configuration (individual areas follow below if successful)
+    instance->num_areas = get_config_int(instance, "numAreas", 0);
+    if (instance->num_areas < 1) {
+        mtx_unlock(&instance->mutex);
+        FBLOG_WARN(instance->ext_instance_ref, "invalid number of areas: %d", instance->num_areas);
+        return FBERROR_UNSPECIFIC;
+    }
     instance->width = get_config_int(instance, "width", 0);
     instance->height = get_config_int(instance, "height", 0);
-    instance->x = get_config_int(instance, "x", 0);
-    instance->y = get_config_int(instance, "y", 0);
     instance->buffer_size = instance->width * instance->height * 3;
 
-    // allocate buffers if parameters were acceptable
-    bool success = instance->source_name && (strlen(instance->source_name) > 0) && (instance->source_buffer_id >= 0) && (instance->width > 0) && (instance->height > 0) && (instance->x >= 0) && (instance->y >= 0);
-    if (success) {
-        instance->buffers[0] = (unsigned char*) malloc(instance->buffer_size);
-        instance->buffers[1] = (unsigned char*) malloc(instance->buffer_size);
+    char *config_color = get_config_pointer(instance, "baseColor");
+    if (!config_color) {
+        config_color = "black";
+    }
+    if (!parse_color(config_color, &instance->base_color)) {
+        FBLOG_WARN(instance->ext_instance_ref, "base color \"%s\" could not be parsed", config_color);
+        out_error = FBERROR_UNSPECIFIC;
     }
 
-    // reset on error (buffers remain unallocated if input is wrong)
-    if (!instance->buffers[0] || !instance->buffers[1]) {
+    // allocate buffers if generator parameters were acceptable
+    if (out_error == FBERROR_NONE) {
+        bool config_ok = (instance->buffer_size > 0) && (instance->width > 0) && (instance->height > 0);
+        if (!config_ok) {
+            FBLOG_WARN(instance->ext_instance_ref, "invalid base configuration provided (width=%d, height=%d, baseColor=%s)", instance->width, instance->height, config_color);
+        } else {
+            instance->buffers[0] = (unsigned char*) malloc(instance->buffer_size);
+            instance->buffers[1] = (unsigned char*) malloc(instance->buffer_size);
+
+            if (!(instance->buffers[0] && instance->buffers[1])) {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to allocate 2x %ld bytes for buffers", instance->buffer_size);
+                out_error = FBERROR_MEMORY_ALLOCATION;
+            } else {
+                // initialize both buffers with base color
+                fill_with_color(instance->buffers[0], instance->base_color, instance->buffer_size);
+                memcpy(instance->buffers[1], instance->buffers[0], instance->buffer_size);
+            }
+        }
+    }
+    
+    // create area records from config
+    size_t areas_size = instance->num_areas * sizeof(fbsource_merge_area_t);
+    if (out_error == FBERROR_NONE) {
+        instance->areas = malloc(areas_size);
+        if (!instance->areas) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %ld bytes for areas array", areas_size);
+            out_error = FBERROR_MEMORY_ALLOCATION;
+        }
+    }
+    
+    int highest_allocated_area_id = -1;
+    if (out_error == FBERROR_NONE) {
+        memset(instance->areas, 0, areas_size);
+
+        for (int i=0; i<instance->num_areas; i++) {
+            fbsource_merge_area_t *area = get_area_pointer(instance, i);
+            if (!area) {
+                FBLOG_ERROR(instance->ext_instance_ref, "implementation error: area pointer for %d is not available during construction; will keep all resources half-allocated", i);
+                mtx_unlock(&instance->mutex);
+                return FBERROR_UNSPECIFIC;
+            }
+
+            area->src_x = get_subconfig_int(instance, i, "source.x", 0);
+            area->src_y = get_subconfig_int(instance, i, "source.y", 0);
+            area->src_w = get_subconfig_int(instance, i, "source.width", FBSOURCE_MERGE_AUTO);
+            area->src_h = get_subconfig_int(instance, i, "source.height", FBSOURCE_MERGE_AUTO);
+            area->dst_x = get_subconfig_int(instance, i, "destination.x", -1);
+            area->dst_y = get_subconfig_int(instance, i, "destination.y", -1);
+            
+            char *wanted_source_name = copy_subconfig_string(instance, i, "source.name", "");
+            int wanted_buffer_id = get_subconfig_int(instance, i, "source.bufferId", 0);
+
+            bool valid_source = wanted_source_name && (strlen(wanted_source_name) > 0) && (wanted_buffer_id >= 0);
+            bool valid_src_x = (area->src_x >= 0);
+            bool valid_src_y = (area->src_y >= 0);
+            bool valid_src_w = (area->src_w > 0) || (area->src_w == FBSOURCE_MERGE_AUTO);
+            bool valid_src_h = (area->src_h > 0) || (area->src_h == FBSOURCE_MERGE_AUTO);
+            bool valid_dst_x = (area->dst_x >= 0) && (area->dst_x < instance->width) && ((area->src_w == FBSOURCE_MERGE_AUTO) || (area->dst_x + area->src_w < instance->width));
+            bool valid_dst_y = (area->dst_y >= 0) && (area->dst_y < instance->height) && ((area->src_h == FBSOURCE_MERGE_AUTO) || (area->dst_y + area->src_h < instance->height));
+            bool valid = valid_source && valid_src_x && valid_src_y && valid_src_w && valid_src_h && valid_dst_x && valid_dst_y;
+            
+            if (!valid) {
+                FBLOG_WARN(instance->ext_instance_ref, "invalid configuration of area %d provided: source(name=\"%s\", bufferId=%d, x=%d, y=%d, width=%d, height=%d), destination(x=%d, y=%d); validation flags: %d%d%d%d%d%d%d", i, wanted_source_name, wanted_buffer_id, area->src_x, area->src_y, area->src_w, area->src_h, area->dst_x, area->dst_y, valid_source, valid_src_x, valid_src_y, valid_src_w, valid_src_h, valid_dst_x, valid_dst_y);
+                out_error = FBERROR_UNSPECIFIC;
+            } else {
+                FBLOG_DEBUG(instance->ext_instance_ref, "defining area %d as: source(name=\"%s\", bufferId=%d, x=%d, y=%d, width=%d, height=%d), destination(x=%d, y=%d)", i, wanted_source_name, wanted_buffer_id, area->src_x, area->src_y, area->src_w, area->src_h, area->dst_x, area->dst_y);
+            }
+            
+            // search previously created source of same name and buffer ID
+            fbsource_merge_source_t *source = NULL;
+            bool reuses_source = FALSE;
+            if (out_error == FBERROR_NONE) {
+                for (int j=0; j<i; j++) {
+                    fbsource_merge_area_t *previous_area = get_area_pointer(instance, j);
+                    if (!previous_area) {
+                        FBLOG_ERROR(instance->ext_instance_ref, "implementation error: area pointer for %d is not available during construction of area %d (but it was previously?!); will keep all resources half-allocated", j, i);
+                        mtx_unlock(&instance->mutex);
+                        return FBERROR_UNSPECIFIC;
+                    }
+
+                    if ((wanted_buffer_id == previous_area->source->buffer_id) && !strcmp(wanted_source_name, previous_area->source->name)) {
+                        source = previous_area->source;
+                        reuses_source = TRUE;
+                        break;
+                    }
+                }
+            }
+
+            // create source record if it doesn't exist yet
+            if ((out_error == FBERROR_NONE) && !source) {
+                source = malloc(sizeof(fbsource_merge_source_t));
+                if (!source) {
+                    FBLOG_WARN(instance->ext_instance_ref, "failed to allocate memory for source record %s #%d", wanted_source_name, wanted_buffer_id);
+                    out_error = FBERROR_MEMORY_ALLOCATION;
+                } else {
+                    memset(source, 0, sizeof(fbsource_merge_source_t));
+
+                    source->instance = instance;
+                    source->buffer_id = wanted_buffer_id;
+                    
+                    source->name = copy_string(wanted_source_name);
+                    if (!source->name) {
+                        FBLOG_WARN(instance->ext_instance_ref, "failed to copy source name for area %d", i);
+                        out_error = FBERROR_MEMORY_ALLOCATION;
+                    }
+                }
+
+                if ((out_error == FBERROR_NONE) && (mtx_init(&source->mutex, mtx_plain) != thrd_success)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "mutex for source %s #%d could not be created", source->name, source->buffer_id);
+                    out_error = FBERROR_UNSPECIFIC;
+                }
+
+                if ((out_error == FBERROR_NONE) && (cnd_init(&source->wait) != thrd_success)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "wait condition for source %s #%d could not be created", source->name, source->buffer_id);
+                    mtx_destroy(&source->mutex);
+                    out_error = FBERROR_UNSPECIFIC;
+                }
+            }
+            
+            if (out_error == FBERROR_NONE) {
+                area->source = source;
+            }
+            
+            free(wanted_source_name);
+            wanted_source_name = NULL;
+            
+            // if an error occured, undo this record and the newly created source
+            if (out_error != FBERROR_NONE) {
+                if (!reuses_source && source) {
+                    if (source->name) {
+                        free(source->name);
+                    }
+
+                    free(source);
+                    area->source = NULL;
+                }
+
+                // earlier created records will be undone in error handling
+                
+                break;
+            }
+
+            highest_allocated_area_id = i;
+        }
+    }
+    
+    // destroy all source records on error
+    if (out_error != FBERROR_NONE) {
+        for (int i=0; i<=highest_allocated_area_id; i++) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "destroying area record %d due to construction/configuration error", i);
+            fbsource_merge_area_t *prev_area = get_area_pointer(instance, i);
+            if (!prev_area) {
+                FBLOG_ERROR(instance->ext_instance_ref, "implementation error: area pointer for %d is not available while cleaning up after construction error (but it was before?!); will keep all resources half-allocated", i);
+                mtx_unlock(&instance->mutex);
+                return FBERROR_UNSPECIFIC;
+            }
+
+            fbsource_merge_source_t *prev_source = prev_area->source;
+            if (prev_source) {
+                cnd_destroy(&prev_source->wait);
+                mtx_destroy(&prev_source->mutex);
+                
+                if (prev_source->name) {
+                    free(prev_source->name);
+                }
+
+                free(prev_source);
+                prev_area->source = NULL;
+
+                // since we just freed the source we need to unlink it from all other areas
+                for (int j=i+1; j<=highest_allocated_area_id; j++) {
+                    fbsource_merge_area_t *other_area = get_area_pointer(instance, j);
+                    if (!prev_area) {
+                        FBLOG_ERROR(instance->ext_instance_ref, "implementation error: area pointer for %d is not available while cleaning up area %d after construction error (but it was before?!); will keep all resources half-allocated", j, i);
+                        mtx_unlock(&instance->mutex);
+                        return FBERROR_UNSPECIFIC;
+                    }
+
+                    if (other_area->source == prev_area->source) {
+                        other_area->source = NULL;
+                    }
+                }
+            }
+        }
+
+        // undo areas allocation
+        free(instance->areas);
+        instance->areas = NULL;
+        instance->num_areas = 0;
+    }
+
+    // reset generic part on error
+    if (out_error != FBERROR_NONE) {
         if (instance->buffers[0]) {
             free(instance->buffers[0]);
             instance->buffers[0] = NULL;
@@ -369,22 +1277,45 @@ static int merge_configure_module(void *data, fbcollections_map_entry_t *config)
         instance->height = 0;
         instance->buffer_size = 0;
     }
-
-    success = (instance->buffer_size > 0);
-
+    
     mtx_unlock(&instance->mutex); // TODO: handle mtx_unlock error
-
-    if (success) {
+    
+    // start main thread
+    if (out_error == FBERROR_NONE) {
         instance->stop_generator = FALSE;
 
         if (thrd_create(&instance->generator_thread, generate, instance) == thrd_success) {
             instance->has_generator_thread = TRUE;
         } else {
-            return FBERROR_UNSPECIFIC;
+            FBLOG_WARN(instance->ext_instance_ref, "failed to start generator thread");
+            out_error = FBERROR_UNSPECIFIC;
         }
     }
 
-    return success ? FBERROR_NONE : FBERROR_UNSPECIFIC;
+    // start source threads
+    if (out_error == FBERROR_NONE) {
+        for (int i=0; i<instance->num_areas; i++) {
+            fbsource_merge_area_t *area = get_area_pointer(instance, i);
+            if (!area) {
+                FBLOG_ERROR(instance->ext_instance_ref, "implementation error: area pointer for %d is not available during thread creation (but it was before?!); will leave everything in unfinished state", i);
+                return FBERROR_UNSPECIFIC;
+            }
+
+            fbsource_merge_source_t *source = area->source;
+            if (source->has_thread) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "source thread for %s #%d has already been spawned", source->name, source->buffer_id);
+            } else if (thrd_create(&source->thread, source_run, source) == thrd_success) {
+                source->has_thread = TRUE;
+            } else {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to start source thread for %s #%d", source->name, source->buffer_id);
+                out_error = FBERROR_UNSPECIFIC;
+            }
+        }
+    }
+    
+    FBLOG_DEBUG(instance->ext_instance_ref, "(re)configuration finished with %d", out_error);
+
+    return out_error;
 }
 
 static int merge_get_num_buffers(void *data) {
@@ -401,6 +1332,8 @@ static int merge_get_module_configuration(void *data, fbcollections_map_entry_t 
 static int merge_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_merge_t *instance = data;
 
+    FBLOG_TRACE(instance->ext_instance_ref, "get_buffer_config buffer_id=%d, buffer_config=%p", buffer_id, buffer_config);
+    
     if (!buffer_config) {
         FBLOG_WARN(instance->ext_instance_ref, "get_buffer_configuration was called with null as buffer_config");
         return FBERROR_UNSPECIFIC;
@@ -421,14 +1354,16 @@ static int merge_get_buffer_configuration(void *data, int buffer_id, fbsource_bu
     buffer_config->size = instance->buffer_size;
 
     mtx_unlock(&instance->mutex); // TODO: handle error?
-  
+
+    FBLOG_TRACE(instance->ext_instance_ref, "get_buffer_config finished");
+    
     return FBERROR_NONE;
 }
 
 static int merge_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_merge_t *instance = data;
     int out_error = FBERROR_NONE;
-  
+
     if (buffer_id != 0) {
         return FBERROR_NO_SUCH_BUFFER;
     }
@@ -442,7 +1377,7 @@ static int merge_copy_latest_frame(void *data, unsigned char *destination, unsig
     } else if (buffer_size < instance->buffer_size) {
         out_error = FBERROR_BUFFER_TOO_SMALL;
     } else {
-        memcpy(destination, instance->buffers[instance->complete_buffer], instance->buffer_size);
+        memcpy(destination, instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID], instance->buffer_size);
         *token = instance->frame_token;
     }
 
