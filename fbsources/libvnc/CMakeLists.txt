@@ -62,6 +62,7 @@ ENDIF()
 SET(LIBVNCCLIENT_STATIC "${LIB_BUILD}/libvncclient.a" "${LIB_BUILD}/libturbojpeg.a" "${LIB_BUILD}/libjpeg.a" "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/${ZLIB_STATIC_NAME}.a")
 
 ADD_LIBRARY(fbsource_libvnc_static STATIC ${FBPLUGIN_SOURCES})
+TARGET_COMPILE_DEFINITIONS(fbsource_libvnc_static PRIVATE FBSOURCE_BUILD_STATIC_MODULE)
 
 # FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
 # NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?

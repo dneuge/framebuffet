@@ -308,6 +308,21 @@ typedef fbsource_module_t (*fbsource_init_f)(void);
         .ops = moduleops                                                \
     };
 
+#ifdef FBSOURCE_BUILD_STATIC_MODULE
+/* modules that should be statically linked must omit _fbsource_module_descriptor_symbol,
+   else linking more than one module together will break */
+#undef FBSOURCE_MODULE_DESCRIPTOR
+#define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
+    static char _fbsource_module_name__##descriptorid[]=modulename;     \
+    static char _fbsource_module_license__##descriptorid[]=modulelicense; \
+    const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
+        .api_version = FRAMEBUFFET_MODULE_API_VERSION,                  \
+        .name = _fbsource_module_name__##descriptorid,                  \
+        .license = _fbsource_module_license__##descriptorid,            \
+        .ops = moduleops                                                \
+    };
+#endif
+
 typedef struct {
     fbsource_module_t *module;
     char *name;
