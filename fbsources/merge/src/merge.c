@@ -91,6 +91,7 @@ typedef struct {
 
     int width;
     int height;
+    bool flip_y;
     fbsource_merge_color_t base_color;
 
     unsigned char *buffers[2];
@@ -386,6 +387,7 @@ static int generate(void *data) {
     FBLOG_INFO(instance->ext_instance_ref, "[main] worker thread started");
     
     unsigned int instance_line_bytes = instance->width * 3;
+    int directional_instance_line_bytes = instance->flip_y ? -instance_line_bytes : instance_line_bytes;
     
     while (!instance->stop_generator) {
         FBLOG_TRACE(instance->ext_instance_ref, "[main] loop iteration");
@@ -505,12 +507,20 @@ static int generate(void *data) {
                     unsigned int wanted_line_bytes = wanted_width * 3;
                     
                     // merge from source to target buffer
-                    unsigned char *destination = instance->buffers[FBSOURCE_MERGE_WORK_BUFFER_ID] + (area->dst_y * instance_line_bytes) + (area->dst_x * 3);
                     unsigned char *source = source_start;
+                    unsigned char *destination;
+                    if (!instance->flip_y) {
+                        // normal orientation: y complete lines down from start of buffer, then x pixels to the right
+                        destination = instance->buffers[FBSOURCE_MERGE_WORK_BUFFER_ID] + (area->dst_y * instance_line_bytes) + (area->dst_x * 3);
+                    } else {
+                        // flipped Y axis: y+1 complete lines up from end of buffer, then x pixels to the right
+                        destination = instance->buffers[FBSOURCE_MERGE_WORK_BUFFER_ID] + instance->buffer_size - ((area->dst_y + 1) * instance_line_bytes)  + (area->dst_x * 3);
+                    }
+                    
                     for (int line=0; line<wanted_height; line++) {
                         memcpy(destination, source, wanted_line_bytes);
                         source += source_line_bytes;
-                        destination += instance_line_bytes;
+                        destination += directional_instance_line_bytes;
                     }
 
                     updated = TRUE;
@@ -1060,6 +1070,9 @@ static int merge_configure_module(void *data, fbcollections_map_entry_t *config)
     instance->width = get_config_int(instance, "width", 0);
     instance->height = get_config_int(instance, "height", 0);
     instance->buffer_size = instance->width * instance->height * 3;
+
+    char *config_flip_y = get_config_pointer(instance, "flipY");
+    instance->flip_y = config_flip_y && !strcmp("true", config_flip_y);
 
     char *config_color = get_config_pointer(instance, "baseColor");
     if (!config_color) {
