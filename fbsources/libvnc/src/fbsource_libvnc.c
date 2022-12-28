@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef HAVE_C11_THREADS
+#ifndef NEED_C11_THREADS_WRAPPER
 #include <time.h>
 #include <threads.h>
 #else

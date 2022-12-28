@@ -23,9 +23,8 @@ SET(LIB_BUILD "${CMAKE_CURRENT_SOURCE_DIR}/../lib/_build")
 
 # check if C11 compatibility wrappers are needed for threads.h and subsequently time.h
 CHECK_INCLUDE_FILE(threads.h HAVE_C11_THREADS)
-IF(HAVE_C11_THREADS)
-    ADD_DEFINITIONS(-DHAVE_C11_THREADS)
-ELSE()
+IF(NOT HAVE_C11_THREADS)
+    ADD_DEFINITIONS(-DNEED_C11_THREADS_WRAPPER)
     SET(LINK_C11_COMPAT_STATIC "${LIB_BUILD}/libmesa_c11.a")
 ENDIF()
 
