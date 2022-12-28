@@ -667,13 +667,15 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
 
     instance->framebuffet = framebuffet;
     instance->module = registration;
+    instance->instance_name = copy_string(instance_name);
 
     // copy instance and module names, sanitized for use as format on *printf functions
     char *safe_instance_name = copy_string_format_safe(instance_name);
     char *safe_module_name = copy_string_format_safe(module_name);
     if (!safe_instance_name || !safe_module_name) {
         mtx_unlock(&framebuffet->mutex);
-        
+
+        free(instance->instance_name);
         free(instance);
         free(key);
 
