@@ -36,6 +36,11 @@ cd "${script_dir}/fbsources/merge"
 ./build.sh $@ || die "Building merge source failed"
 echo
 
+echo "=== Building capture X11 source ==="
+cd "${script_dir}/fbsources/capture_x11"
+./build.sh $@ || die "Building capture X11 source failed"
+echo
+
 echo "=== Building source viewer ==="
 cd "${script_dir}/tools/fbsourceviewer"
 ./build.sh $@ || die "Building source viewer failed"
