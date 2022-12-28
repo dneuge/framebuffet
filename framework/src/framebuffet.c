@@ -339,28 +339,36 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     // FIXME: reconfiguration untested
     
     fbsource_module_instance_entry_t *instance = instance_ref;
+    framebuffet_t *framebuffet = instance->framebuffet;
     
     if (mtx_lock(&instance->mutex) != thrd_success) {
+        FBLOG_WARN("framebuffet_publish_num_buffers for \"%s\" failed to lock mutex, unable to publish", instance->instance_name);
         return FBERROR_UNSPECIFIC;
     }
 
     if (num_buffers == instance->num_buffers) {
         // nothing to do if number of buffers has not changed
+        FBLOG_DEBUG("framebuffet_publish_num_buffers got same number of buffers as already published for \"%s\" (%d), nothing to do", instance->instance_name, instance->num_buffers);
         mtx_unlock(&instance->mutex);
         return FBERROR_NONE;
     }
 
     size_t new_size = sizeof(fbsource_module_instance_frame_update_t[num_buffers]);
+    FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": new number of buffers is %d, new record size should be %lu", instance->instance_name, num_buffers, new_size);
     
     if (num_buffers == 0) {
         // all buffers are gone
         // just release the old array, if we had any
         if (instance->frame_updates) {
+            FBLOG_DEBUG("framebuffet_publish_num_buffers for \"%s\": destroying all records", instance->instance_name);
             destroy_frame_update_entries(instance->frame_updates, 0, instance->num_buffers);
+            FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": freeing old records", instance->instance_name);
             free(instance->frame_updates);
+            FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": freed", instance->instance_name);
         }
     } else if (num_buffers < instance->num_buffers) {
         // number of buffers shrinks
+        FBLOG_DEBUG("framebuffet_publish_num_buffers for \"%s\": number of buffers shrinks", instance->instance_name);
 
         // create the new array
         fbsource_module_instance_frame_update_t *new_entries = malloc(new_size);
@@ -383,6 +391,7 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
         instance->frame_updates = new_entries;
     } else {
         // number of buffers grows
+        FBLOG_DEBUG("framebuffet_publish_num_buffers for \"%s\": number of buffers grows", instance->instance_name);
 
         // create the new array
         fbsource_module_instance_frame_update_t *new_entries = malloc(new_size);
