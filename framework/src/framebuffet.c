@@ -364,6 +364,7 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
             destroy_frame_update_entries(instance->frame_updates, 0, instance->num_buffers);
             FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": freeing old records", instance->instance_name);
             free(instance->frame_updates);
+            instance->frame_updates = NULL;
             FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": freed", instance->instance_name);
         }
     } else if (num_buffers < instance->num_buffers) {
