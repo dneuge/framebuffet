@@ -12,6 +12,7 @@ Primary:
  - GCC 10
  - MinGW
  - NASM
+ - X11 development resources (X.org server, Xlib, Xext, Xcomposite)
 
 Supplemental:
  - 7zip

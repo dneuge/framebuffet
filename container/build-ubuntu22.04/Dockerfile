@@ -16,11 +16,14 @@ RUN apt -y install \
     cmake \
     curl \
     git \
+    libxcomposite-dev \
+    libxext-dev \
     mingw-w64 \
     nano \
     nasm \
     pkgconf \
     unzip \
+    xserver-xorg-dev \
     wget
 
 ## directory structure
