@@ -11,6 +11,7 @@
 #endif
 
 #include "../../../framework/src/framebuffet.h"
+#include "../../../framework/src/fbutil.h"
 
 typedef short bool;
 #define FALSE 0
@@ -317,7 +318,9 @@ static int source_run(void *data) {
     int res;
 
     FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] worker thread started", source->name, source->buffer_id);
-
+    
+    fbutil_set_current_thread_name("FBMrgS/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
+ 
     source->reconfigure = TRUE;
     source->wait_for_update = FALSE;
 
@@ -385,6 +388,8 @@ static int generate(void *data) {
     int res;
 
     FBLOG_INFO(instance->ext_instance_ref, "[main] worker thread started");
+
+    fbutil_set_current_thread_name("FBMrgM/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
     
     unsigned int instance_line_bytes = instance->width * 3;
     int directional_instance_line_bytes = instance->flip_y ? -instance_line_bytes : instance_line_bytes;

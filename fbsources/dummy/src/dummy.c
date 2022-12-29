@@ -10,6 +10,7 @@
 #endif
 
 #include "../../../framework/src/framebuffet.h"
+#include "../../../framework/src/fbutil.h"
 
 typedef short bool;
 #define FALSE 0
@@ -37,7 +38,9 @@ typedef struct {
 
 static int generate(void *data) {
     fbsource_dummy_t *instance = data;
-  
+
+    fbutil_set_current_thread_name("FBDummy/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
+    
     int gen = 0;
     int last_shift = 0;
     while (!instance->stop_generator) {

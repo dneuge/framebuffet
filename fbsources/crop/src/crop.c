@@ -10,6 +10,7 @@
 #endif
 
 #include "../../../framework/src/framebuffet.h"
+#include "../../../framework/src/fbutil.h"
 
 typedef short bool;
 #define FALSE 0
@@ -65,6 +66,8 @@ static int generate(void *data) {
     int res;
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
+    
+    fbutil_set_current_thread_name("FBCrop/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
     
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {

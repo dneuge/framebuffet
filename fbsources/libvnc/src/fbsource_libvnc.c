@@ -14,6 +14,7 @@
 #include <rfb/rfbclient.h>
 
 #include "../../../framework/src/framebuffet.h"
+#include "../../../framework/src/fbutil.h"
 
 #define VNC_DEFAULT_PORT 5900
 #define VNC_DEFAULT_CONNECT_TIMEOUT_SECONDS 5
@@ -310,6 +311,8 @@ static int client_loop(void *data) {
     bool need_reset;
     vnc_state_t wanted_state;
     rfbClient *client = NULL;
+    
+    fbutil_set_current_thread_name("FBlVNC/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
     
     while (true) {
         wanted_state = instance->wanted_connection_state;
