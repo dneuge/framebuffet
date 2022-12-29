@@ -4,6 +4,8 @@
 
 FrameBuffet offers `FBLOG_*` compiler macros which get removed if the log level is deactivated on compilation, so production code compiled without `TRACE` or `DEBUG` levels does not take any performance penalty from detailed log messages.
 
+Log messages will automatically be prefixed by your source module and instance name such as `[Crop:MySource] `. If you work with multiple threads or forward messages from included libraries you may want to use an additional prefix.
+
 In addition to that compile-time optimization, log messages are only forwarded to applications if a log receiver callback has been provided to the framework instance and the runtime log level is set accordingly. Processing of messages below the runtime log level will be avoided within the framework as best as possible.
 
 Typical usage of log levels:
