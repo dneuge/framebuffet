@@ -1,3 +1,41 @@
+# General debugging
+
+## Log where possible
+
+FrameBuffet offers `FBLOG_*` compiler macros which get removed if the log level is deactivated on compilation, so production code compiled without `TRACE` or `DEBUG` levels does not take any performance penalty from detailed log messages.
+
+In addition to that compile-time optimization, log messages are only forwarded to applications if a log receiver callback has been provided to the framework instance and the runtime log level is set accordingly. Processing of messages below the runtime log level will be avoided within the framework as best as possible.
+
+Typical usage of log levels:
+- Use `INFO` to inform users about steps they would probably want to know about that do not require a deeper understanding of actual code, such as information about startup or connections made to remote servers etc.
+- `WARN` should be used whenever something has gone wrong which breaks something or may cause other issues (unintended restarts/reconfigurations to recover from issues etc.)
+- `ERROR` should only be used if overall system stability is in danger, the application is likely to crash etc. Less severe issues should be logged as `WARN` instead.
+- `DEBUG` should be used for detailed information about processing steps which are only relevant for developers or users asked to help debugging; performance is expected to be worse when enabled but usage within mutexes etc. should be kept to a minimum nevertheless
+- `TRACE` should be used for really detailed information required to search for issues that are less likely to occur or require frequent logging; performance is expected to be much worse when enabled, users should generally not need this level of detail unless asked by developers
+- comment out `TRACE` log messages in code if within critical sections if unlikely to be needed, remove them when no longer needed
+
+# Performance
+
+## Set custom thread names
+
+To help in performance analysis (also by users), it is recommended to use `fbutil_set_current_thread_name` from `fbutils.h` on threads you create. If supported by the platform, the function will register a name for the current thread. This allows threads to be identified in process monitoring tools which support custom thread names.
+
+**Do not to modify threads you don't own!**
+
+Unfortunately, the maximum length of thread names is very limited (15 characters payload with POSIX threads), so the name should be kept as short as possible. It is recommended to use `FB` as a prefix to identify FrameBuffet, followed by up to 4 characters to identify your module, a separator (e.g. `/`) plus some thread identification (like the source instance name).
+
+Example usage:
+
+```c
+fbutil_set_current_thread_name("FBCapX/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
+```
+
+Example names:
+
+- `FBCapX/MySrc`: `FB` means FrameBuffet and `CapX` is short for `capture_x11`, `MySrc` is the source module's instance name as set by the user
+- `FBMrgS/MySrc`: `FB` means FrameBuffet and `Mrg` is short for `merge`, `S` refers to a **s**ource worker thread. `MySrc` is the source module's instance name as set by the user.
+- `FBMrgM/MySrc`: `FB` means FrameBuffet and `Mrg` is short for `merge`, `M` refers to a **m**ain thread. `MySrc` is the source module's instance name as set by the user.
+
 # Portability
 
 It is recommended to start developing for Linux first to keep the code standards-compliant, simple and easy and focus on actual content. Once the basics are working, compatibility with Windows should be ensured to avoid surprises later in the development.
