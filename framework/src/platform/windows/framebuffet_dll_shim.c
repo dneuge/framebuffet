@@ -22,10 +22,10 @@
  */
 
 // TODO: auto-generate from exported symbols and .h files
-// TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h | sha256sum
+// TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h src/fbutil.h | sha256sum
 
 static framebuffet_dll_shim_t _framebuffet_dll_shim = {
-    ._shim_hash = "57be754187e3a0d2ae3b6ed70a581c4606321ce003e2789b6f77508dfed1cd0a",
+    ._shim_hash = "64fb30489418615ac27cb76544721f262ac5256b6e9d7432dd5407f53032873d",
     ._shim_loaded = 0,
     0
 };
@@ -34,6 +34,7 @@ static void link_shim(framebuffet_dll_shim_t *runtime) {
     _framebuffet_dll_shim.framebuffet_publish_num_buffers = runtime->framebuffet_publish_num_buffers;
     _framebuffet_dll_shim.framebuffet_publish_update = runtime->framebuffet_publish_update;
     _framebuffet_dll_shim.framebuffet_log_va = runtime->framebuffet_log_va;
+    _framebuffet_dll_shim.framebuffet_get_source_name_reference = runtime->framebuffet_get_source_name_reference;
     
     _framebuffet_dll_shim.framebuffet_get_source_instance = runtime->framebuffet_get_source_instance;
     _framebuffet_dll_shim.framebuffet_get_num_buffers = runtime->framebuffet_get_num_buffers;
@@ -43,7 +44,9 @@ static void link_shim(framebuffet_dll_shim_t *runtime) {
 
     _framebuffet_dll_shim.fbcollections_map_copy_with_payloads = runtime->fbcollections_map_copy_with_payloads;
     _framebuffet_dll_shim.fbcollections_map_find_key = runtime->fbcollections_map_find_key;
-    _framebuffet_dll_shim.fbcollections_map_free_map_and_payloads = runtime->fbcollections_map_free_map_and_payloads;    
+    _framebuffet_dll_shim.fbcollections_map_free_map_and_payloads = runtime->fbcollections_map_free_map_and_payloads;
+    
+    _framebuffet_dll_shim.fbutil_set_current_thread_name_va = runtime->fbutil_set_current_thread_name_va;
 }
 
 static const framebuffet_dll_shim_t zero_shim = {0};
@@ -58,6 +61,7 @@ static int check_shim_complete(framebuffet_dll_shim_t *shim) {
     if (!shim->framebuffet_publish_num_buffers) return 0;
     if (!shim->framebuffet_publish_update) return 0;
     if (!shim->framebuffet_log_va) return 0;
+    if (!shim->framebuffet_get_source_name_reference) return 0;
     
     if (!shim->framebuffet_get_source_instance) return 0;
     if (!shim->framebuffet_get_num_buffers) return 0;
@@ -68,6 +72,8 @@ static int check_shim_complete(framebuffet_dll_shim_t *shim) {
     if (!shim->fbcollections_map_copy_with_payloads) return 0;
     if (!shim->fbcollections_map_find_key) return 0;
     if (!shim->fbcollections_map_free_map_and_payloads) return 0;
+
+    if (!shim->fbutil_set_current_thread_name_va) return 0;
 
     return 1;
 }
@@ -143,6 +149,11 @@ void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...)
     va_end(args);
 }
 
+char* framebuffet_get_source_name_reference(void *instance_ref) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    _framebuffet_dll_shim.framebuffet_get_source_name_reference(instance_ref);
+}
+
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
     return _framebuffet_dll_shim.framebuffet_get_source_instance(framebuffet, instance_name);
@@ -166,4 +177,16 @@ int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_insta
 int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_wait_for_update_micros(source_instance, buffer_id, last_token, microseconds);
+}
+
+void fbutil_set_current_thread_name_va(char *format, va_list args) {
+    if (!_framebuffet_dll_shim._shim_loaded) return;
+     _framebuffet_dll_shim.fbutil_set_current_thread_name_va(format, args);
+}
+
+void fbutil_set_current_thread_name(char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    fbutil_set_current_thread_name_va(format, args);
+    va_end(args);
 }

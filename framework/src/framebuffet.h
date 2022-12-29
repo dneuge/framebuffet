@@ -11,6 +11,7 @@
 #endif
 
 #include "fbcollections.h"
+#include "fbutil.h"
 
 // license identification constants
 #define FBMODULE_LICENSE_MIT "MIT" /* MIT license */
