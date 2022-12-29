@@ -2,12 +2,14 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.22.1)
 PROJECT(framebuffet)
 
 INCLUDE(CheckIncludeFile)
+INCLUDE(CheckCSourceCompiles)
 
 SET(CMAKE_BUILD_TYPE Debug)
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 SET(FRAMEBUFFET_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/fbcollections.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/fbutil.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/framebuffet.c
 )
 
@@ -26,6 +28,32 @@ CHECK_INCLUDE_FILE(threads.h HAVE_C11_THREADS)
 IF(NOT HAVE_C11_THREADS)
     ADD_DEFINITIONS(-DNEED_C11_THREADS_WRAPPER)
     SET(LINK_C11_COMPAT_STATIC "${LIB_BUILD}/libmesa_c11.a")
+ENDIF()
+
+# check if pthreads can be linked against in the way we need it (optional)
+SET(PTHREAD_LIB "")
+IF(UNIX)
+    SET(PTHREAD_TEST_SOURCE "\n
+        #include <pthread.h>\n
+        int main() {\n
+            pthread_setname_np(pthread_self(), \"test\");\n
+        }\n
+    ")
+    SET(PTHREAD_TEST_GNU_SOURCE "\n
+        #define _GNU_SOURCE\n
+        ${PTHREAD_TEST_SOURCE}
+    ")
+    CHECK_C_SOURCE_COMPILES("${PTHREAD_TEST_SOURCE}" HAVE_PTHREAD FAIL_REGEX "implicit declaration")
+    CHECK_C_SOURCE_COMPILES("${PTHREAD_TEST_GNU_SOURCE}" HAVE_PTHREAD_NEED_GNU_SOURCE FAIL_REGEX "implicit declaration")
+    IF(HAVE_PTHREAD OR HAVE_PTHREAD_NEED_GNU_SOURCE)
+        SET(PTHREAD_LIB pthread)
+        MESSAGE(STATUS "set PTHREAD_LIB=${PTHREAD_LIB}")
+    ENDIF()
+    
+    IF(HAVE_PTHREAD_NEED_GNU_SOURCE)
+        ADD_DEFINITIONS(-D_GNU_SOURCE)
+        MESSAGE(STATUS "added definition _GNU_SOURCE")
+    ENDIF()
 ENDIF()
 
 IF(UNIX)
@@ -77,5 +105,5 @@ SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet")
 # https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
 ADD_CUSTOM_TARGET(framebuffet_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:framebuffet_static> "${LIB_BUILD}/libcjson.a" "${LINK_C11_COMPAT_STATIC}")
 
-TARGET_LINK_LIBRARIES(framebuffet cjson ${LINK_C11_COMPAT_STATIC})
-TARGET_LINK_LIBRARIES(framebuffet_static_lib "${LIB_BUILD}/libcjson.a" ${LINK_C11_COMPAT_STATIC})
+TARGET_LINK_LIBRARIES(framebuffet cjson ${LINK_C11_COMPAT_STATIC} ${PTHREAD_LIB})
+TARGET_LINK_LIBRARIES(framebuffet_static_lib "${LIB_BUILD}/libcjson.a" ${LINK_C11_COMPAT_STATIC} ${PTHREAD_LIB})

@@ -473,6 +473,11 @@ int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token
     return FBERROR_NONE;
 }
 
+char* framebuffet_get_source_name_reference(void *instance_ref) {
+    fbsource_module_instance_entry_t *instance = instance_ref;
+    return instance->instance_name;
+}
+
 static int apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
     if (module_descriptor.api_version != FRAMEBUFFET_MODULE_API_VERSION) {
         FBLOG_WARN("module has been compiled with an incompatible API version %d", module_descriptor.api_version);

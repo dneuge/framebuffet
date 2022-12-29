@@ -364,6 +364,8 @@ int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token
 void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
 void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
 
+char* framebuffet_get_source_name_reference(void *instance_ref); // does not return a copy!
+
 // API for general use
 framebuffet_t* framebuffet_init();
 int framebuffet_destroy(framebuffet_t *framebuffet);
