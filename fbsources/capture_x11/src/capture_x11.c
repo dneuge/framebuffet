@@ -4,9 +4,14 @@
 #include <time.h>
 #include <threads.h>
 
+#include <errno.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/XShm.h>
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
@@ -42,6 +47,12 @@ typedef struct {
     // only to be handled by generator thread: (not protected by mutex)
     Window window;
     bool redirected_window;
+    bool shm_assigned;
+    bool shm_attached_self;
+    bool shm_attached_xserver;
+    XImage *X_image;
+    XShmSegmentInfo shm_info;
+    
 } fbsource_capture_x11_t;
 
 static const struct timespec wait_for_window = {
@@ -49,7 +60,7 @@ static const struct timespec wait_for_window = {
     .tv_nsec = 0
 };
 
-// TODO: check extensions; required: composite >= 0.2
+// TODO: check extensions; required: composite >= 0.2, XShm for shm
 
 static bool find_window(fbsource_capture_x11_t *instance, Window window, Window *matched_window, char *exact_name) {
     Window root;
@@ -142,23 +153,81 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
     return TRUE;
 }
 
+static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
+    int res;
+    bool success = TRUE;
+    
+    FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=0x%lx, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
+
+    if (success && instance->shm_attached_xserver) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "detaching X server from SHM");
+        if (XShmDetach(instance->display, &instance->shm_info)) {
+            instance->shm_attached_xserver = FALSE;
+        } else {
+            FBLOG_WARN(instance->ext_instance_ref, "XShmDetach failed");
+            success = FALSE;
+        }
+    }
+    
+    if (success && instance->X_image) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "destroying XImage");
+        XDestroyImage(instance->X_image);
+        instance->X_image = NULL;
+    }
+
+    if (success && instance->shm_attached_self) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "detaching from SHM segment");
+        res = shmdt(instance->shm_info.shmaddr);
+        if (res == 0) {
+            instance->shm_attached_self = FALSE;
+            instance->shm_info.shmaddr = NULL;
+        } else if (res == -1) {
+            FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment failed (errno %d)", errno);
+            success = FALSE;
+        } else {
+            FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment returned undefined result (%d), assuming failed", res);
+            success = FALSE;
+        }
+    }
+
+    if (success && instance->shm_assigned) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment");
+        res = shmctl(instance->shm_info.shmid, IPC_RMID, NULL);
+        if (res == 0) {
+            instance->shm_assigned = FALSE;
+        } else if (res == -1) {
+            FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment failed (errno %d)", errno);
+            success = FALSE;
+        } else {
+            FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment returned undefined result (%d), assuming failed", res);
+            success = FALSE;
+        }
+    }
+
+    return success;
+}
+
 static inline double clock2ms(clock_t c) {
     return ((double) c) / CLOCKS_PER_SEC * 1000.0;
 }
 
 static int generate(void *data) {
+    const int format = ZPixmap;
+
     fbsource_capture_x11_t *instance = data;
 
     unsigned char *buffers[2];
     unsigned long buffer_size = 0;
 
     Status status;
+    int res;
 
     bool success;
     XWindowAttributes attrs;
-    XImage *X_image = NULL;
     
     Window root_window = DefaultRootWindow(instance->display);
+
+    bool use_shm = TRUE; // TODO: set based on server support
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
@@ -244,23 +313,90 @@ static int generate(void *data) {
         XCompositeRedirectWindow(instance->display, instance->window, CompositeRedirectAutomatic);
         instance->redirected_window = TRUE;
 
+        // create SHM XImage structure
+        if (use_shm) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
+            instance->X_image = XShmCreateImage(instance->display, attrs.visual, attrs.depth, format, NULL, &instance->shm_info, attrs.width, attrs.height);
+            if (!instance->X_image) {
+                FBLOG_WARN(instance->ext_instance_ref, "XShmCreateImage failed, disabling SHM support");
+                use_shm = FALSE;
+            }
+        }
+
+        // retrieve a SHM memory segment according to XImage specifications
+        if (use_shm) {
+            instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->bytes_per_line * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
+            if (instance->shm_info.shmid == -1) {
+                FBLOG_WARN(instance->ext_instance_ref, "shmget failed (errno %d), disabling SHM support", errno);
+                use_shm = FALSE;
+                if (!shm_reset(instance, "failed initialization")) {
+                    break;
+                }
+            }
+        }
+
+        // attach this process to the memory segment and set active on XImage if successful
+        if (use_shm) {
+            void *shm_addr = shmat(instance->shm_info.shmid, NULL, 0);
+            if (shm_addr && (shm_addr != (void*)-1)) {
+                instance->shm_attached_self = TRUE;
+                instance->X_image->data = shm_addr;
+                instance->shm_info.shmaddr = shm_addr;
+                instance->shm_info.readOnly = False;
+            } else {
+                // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
+                FBLOG_WARN(instance->ext_instance_ref, "shmat failed (errno %d), disabling SHM support", errno);
+                use_shm = FALSE;
+                if (!shm_reset(instance, "failed initialization")) {
+                    break;
+                }
+            }
+        }
+
+        // attach the memory segment to X11
+        if (use_shm) {
+            status = XShmAttach(instance->display, &instance->shm_info);
+            if (status) {
+                instance->shm_attached_xserver = TRUE;
+            } else {
+                FBLOG_WARN(instance->ext_instance_ref, "XShmAttach failed (status %d), disabling SHM support", status);
+                use_shm = FALSE;
+                if (!shm_reset(instance, "failed initialization")) {
+                    break;
+                }
+            }
+        }
+
+        if (use_shm) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "XSHM is enabled");
+        } else {
+            FBLOG_DEBUG(instance->ext_instance_ref, "XSHM is disabled");
+        }
+
         while (!instance->stop_generator) {
             clock_t benchStart = clock(); // DEBUG
-            X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, ZPixmap);
-            clock_t benchGotImage = clock(); // DEBUG
-            if (!X_image) {
-                FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
-                break;
+            if (use_shm) {
+                if (!XShmGetImage(instance->display, instance->window, instance->X_image, 0, 0, AllPlanes)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "XShmGetImage failed");
+                    break;
+                }
+            } else {
+                instance->X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, format);
+                if (!instance->X_image) {
+                    FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
+                    break;
+                }
             }
+            clock_t benchGotImage = clock(); // DEBUG
 
             int work_buffer = (instance->complete_buffer + 1) % 2;
-            uint32_t *in = (uint32_t*) X_image->data;
+            uint32_t *in = (uint32_t*) instance->X_image->data;
             unsigned char *out = instance->buffers[work_buffer];
             
             int red_shift = 0;
             int green_shift = 8;
             int blue_shift = 16;
-            if (X_image->byte_order == LSBFirst) {
+            if (instance->X_image->byte_order == LSBFirst) {
                 red_shift = 16;
                 blue_shift = 0;
             } else {
@@ -270,9 +406,9 @@ static int generate(void *data) {
 
             for (int y=0; y<attrs.height; y++) {
                 for (int x=0; x<attrs.width; x++) {
-                    *(out++) = ((*in) & X_image->red_mask) >> red_shift;
-                    *(out++) = ((*in) & X_image->green_mask) >> green_shift;
-                    *(out++) = ((*in) & X_image->blue_mask) >> blue_shift;
+                    *(out++) = ((*in) & instance->X_image->red_mask) >> red_shift;
+                    *(out++) = ((*in) & instance->X_image->green_mask) >> green_shift;
+                    *(out++) = ((*in) & instance->X_image->blue_mask) >> blue_shift;
                     in++;
                 }
             }
@@ -282,8 +418,8 @@ static int generate(void *data) {
             if (mtx_lock(&instance->mutex) != thrd_success) {
                 // just drop the frame if we cannot get hold of our mutex
                 FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
-                XDestroyImage(X_image);
-                X_image = NULL;
+                XDestroyImage(instance->X_image);
+                instance->X_image = NULL;
                 continue;
             }
 
@@ -295,15 +431,23 @@ static int generate(void *data) {
 
             framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
             clock_t benchPublished = clock(); // DEBUG
+
+            if (!use_shm) {
+                XDestroyImage(instance->X_image);
+                instance->X_image = NULL;
+            }
             
-            XDestroyImage(X_image);
-            X_image = NULL;
             clock_t benchDone = clock(); // DEBUG
 
             FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
         }
 
         // if we got here we are reinitializing and need to reset
+        if (use_shm && !shm_reset(instance, "reinitialization")) {
+            FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
+            break;
+        }
+        
         if (!generator_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "worker reset failed, terminating");
             break;
@@ -311,15 +455,22 @@ static int generate(void *data) {
     }
 
     FBLOG_DEBUG(instance->ext_instance_ref, "shutting down worker thread");
-
+    
+    int out_err = instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
+    
+    if (use_shm && !shm_reset(instance, "termination")) {
+        FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
+        out_err = FBERROR_UNSPECIFIC;
+    }
+    
     if (!generator_reset(instance, "termination")) {
         FBLOG_WARN(instance->ext_instance_ref, "worker reset failed during termination");
-        return FBERROR_UNSPECIFIC;
+        out_err = FBERROR_UNSPECIFIC;
     }
     
     FBLOG_INFO(instance->ext_instance_ref, "worker thread terminated");
 
-    return instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
+    return out_err;
 }
 
 static int capture_x11_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
