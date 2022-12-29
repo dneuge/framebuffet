@@ -141,6 +141,10 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
     return TRUE;
 }
 
+static inline double clock2ms(clock_t c) {
+    return ((double) c) / CLOCKS_PER_SEC * 1000.0;
+}
+
 static int generate(void *data) {
     fbsource_capture_x11_t *instance = data;
 
@@ -238,7 +242,9 @@ static int generate(void *data) {
         instance->redirected_window = TRUE;
 
         while (!instance->stop_generator) {
+            clock_t benchStart = clock(); // DEBUG
             X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, ZPixmap);
+            clock_t benchGotImage = clock(); // DEBUG
             if (!X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
                 break;
@@ -267,6 +273,7 @@ static int generate(void *data) {
                     in++;
                 }
             }
+            clock_t benchConverted = clock(); // DEBUG
 
             // mark buffer as complete
             if (mtx_lock(&instance->mutex) != thrd_success) {
@@ -281,11 +288,16 @@ static int generate(void *data) {
             instance->frame_token++;
 
             mtx_unlock(&instance->mutex);
+            clock_t benchUnlocked = clock(); // DEBUG
 
             framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
+            clock_t benchPublished = clock(); // DEBUG
             
             XDestroyImage(X_image);
             X_image = NULL;
+            clock_t benchDone = clock(); // DEBUG
+
+            FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
         }
 
         // if we got here we are reinitializing and need to reset
