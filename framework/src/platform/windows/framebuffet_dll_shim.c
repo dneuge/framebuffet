@@ -154,7 +154,7 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instanc
 }
 
 int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
-    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_get_buffer_configuration(source_instance, buffer_id, buffer_config);
 }
 
