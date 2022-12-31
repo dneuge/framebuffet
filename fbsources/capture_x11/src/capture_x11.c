@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <sys/ipc.h>
+#include <sys/select.h>
 #include <sys/shm.h>
 
 #include <X11/Xlib.h>
@@ -56,12 +57,20 @@ typedef struct {
     bool shm_attached_xserver;
     XImage *X_image;
     XShmSegmentInfo shm_info;
+    fd_set connection_fd_set;
+    int connection_fd_set_count;
+    int connection_fd_stop_excl;
     
 } fbsource_capture_x11_t;
 
 static const struct timespec wait_for_window = {
     .tv_sec = 2,
     .tv_nsec = 0
+};
+
+static const struct timeval wait_for_events_timeout = {
+    .tv_sec = 2,
+    .tv_usec = 0
 };
 
 static const struct timespec wait_after_error = {
@@ -220,6 +229,58 @@ static inline double clock2ms(clock_t c) {
     return ((double) c) / CLOCKS_PER_SEC * 1000.0;
 }
 
+static void clear_connection_fd_set(fbsource_capture_x11_t *instance) {
+    instance->connection_fd_set_count = 0;
+    instance->connection_fd_stop_excl = 0;
+    FD_ZERO(&instance->connection_fd_set);
+}
+
+static void add_connection_fd_set(fbsource_capture_x11_t *instance, int fd) {
+    FBLOG_DEBUG(instance->ext_instance_ref, "adding X11 connection file descriptor %d to wait FD set", fd);
+    
+    FD_SET(fd, &instance->connection_fd_set);
+    if (fd >= instance->connection_fd_stop_excl) {
+        instance->connection_fd_stop_excl = fd + 1;
+    }
+    instance->connection_fd_set_count++;
+}
+
+static void init_connection_fd_set(fbsource_capture_x11_t *instance) {
+    clear_connection_fd_set(instance);
+    add_connection_fd_set(instance, XConnectionNumber(instance->display));
+}
+
+static void wait_for_events(fbsource_capture_x11_t *instance) {
+    bool success = instance->connection_fd_set_count > 0;
+    if (success) {
+        struct timeval timeout = wait_for_events_timeout; // timeout must be copied as it will be modified by select
+        int res = select(instance->connection_fd_stop_excl, &instance->connection_fd_set, NULL, NULL, &timeout);
+        
+        // select returns -1 on error, 0 on timeout, positive integer = total count of descriptors
+        if (res < 0) {
+            success = FALSE;
+            
+            // expected errors in errno according to documentation are:
+            //
+            //   EBADF  in case of bad file descriptors (closed or erroneous)
+            //   EINVAL in case of invalid parameters
+            //   ENOMEM in case of memory allocation error
+            //   EINTR  if interrupted by a signal
+            //
+            // except for EINTR all these errors sound like they would be final, so we can stop trying
+            if (errno != EINTR) {
+                FBLOG_WARN(instance->ext_instance_ref, "waiting for X11 events failed with %d, disabling", errno);
+                clear_connection_fd_set(instance);
+            }
+        }
+    }
+
+    // yield instead if we were unable to wait this time
+    if (!success) {
+        thrd_yield();
+    }
+}
+
 static int generate(void *data) {
     const int format = ZPixmap;
 
@@ -250,6 +311,8 @@ static int generate(void *data) {
 
     fbutil_set_current_thread_name("FBCapX/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
 
+    init_connection_fd_set(instance);
+    
     if (!XDamageQueryExtension(instance->display, &damage_event_base, &damage_error_base)) {
         FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryExtension failed, disabling");
         use_damage = FALSE;
@@ -521,7 +584,7 @@ static int generate(void *data) {
                 break;
             }
             if (use_damage && !update_available) {
-                thrd_yield();
+                wait_for_events(instance);
             }
         }
 
@@ -560,6 +623,8 @@ static int generate(void *data) {
         FBLOG_WARN(instance->ext_instance_ref, "worker reset failed during termination");
         out_err = FBERROR_UNSPECIFIC;
     }
+
+    clear_connection_fd_set(instance);
     
     FBLOG_INFO(instance->ext_instance_ref, "worker thread terminated");
 
