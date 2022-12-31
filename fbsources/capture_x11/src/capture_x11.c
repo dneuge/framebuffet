@@ -230,6 +230,7 @@ static int generate(void *data) {
     bool success;
     bool processed_image = FALSE;
     XWindowAttributes attrs;
+    XEvent event;
     
     Window root_window = DefaultRootWindow(instance->display);
 
@@ -380,6 +381,9 @@ static int generate(void *data) {
             FBLOG_DEBUG(instance->ext_instance_ref, "XSHM is disabled");
         }
 
+        // listen for events
+        XSelectInput(instance->display, instance->window, StructureNotifyMask);
+
         while (!instance->stop_generator) {
             clock_t benchStart = clock(); // DEBUG
             if (use_shm) {
@@ -449,9 +453,30 @@ static int generate(void *data) {
             FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
 
             processed_image = TRUE;
+
+            // process events
+            bool size_changed = FALSE;
+            while (XPending(instance->display) > 0) {
+                XNextEvent(instance->display, &event);
+
+                if (event.type == ConfigureNotify) {
+                    XConfigureEvent *e = (XConfigureEvent*) &event;
+                    if ((e->window == instance->window) && ((e->width != attrs.width) || (e->height != attrs.height))) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs.width, attrs.height, e->width, e->height);
+                        size_changed = TRUE;
+                        continue;
+                    }
+                }
+            }
+            if (size_changed) {
+                FBLOG_INFO(instance->ext_instance_ref, "window size changed, reinitializing");
+                break;
+            }
         }
 
         // if we got here we are reinitializing and need to reset
+        XSelectInput(instance->display, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
+        
         if (use_shm && !shm_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
             break;
