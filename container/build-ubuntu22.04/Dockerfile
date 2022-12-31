@@ -17,6 +17,7 @@ RUN apt -y install \
     curl \
     git \
     libxcomposite-dev \
+    libxdamage-dev \
     libxext-dev \
     mingw-w64 \
     nano \
