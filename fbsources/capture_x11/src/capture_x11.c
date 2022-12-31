@@ -11,6 +11,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/XShm.h>
 
 #include "../../../framework/src/framebuffet.h"
@@ -19,6 +20,9 @@
 typedef short bool;
 #define FALSE 0
 #define TRUE 1
+
+#define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR 1
+#define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR 1
 
 typedef struct {
     mtx_t mutex;
@@ -231,6 +235,12 @@ static int generate(void *data) {
     bool processed_image = FALSE;
     XWindowAttributes attrs;
     XEvent event;
+    Damage damage;
+    bool use_damage = TRUE;
+    int damage_event_base;
+    int damage_error_base;
+    int damage_version_major;
+    int damage_version_minor;
     
     Window root_window = DefaultRootWindow(instance->display);
 
@@ -240,6 +250,28 @@ static int generate(void *data) {
 
     fbutil_set_current_thread_name("FBCapX/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
 
+    if (!XDamageQueryExtension(instance->display, &damage_event_base, &damage_error_base)) {
+        FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryExtension failed, disabling");
+        use_damage = FALSE;
+    } else {
+        status = XDamageQueryVersion(instance->display, &damage_version_major, &damage_version_minor);
+        if (!status) {
+            FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryVersion failed, disabling (status: %d)", status);
+            use_damage = FALSE;
+        } else if ((damage_version_major < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_version_major == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_version_minor < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
+            FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+            use_damage = FALSE;
+        } else if ((damage_version_major != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_version_minor != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
+            FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+        }
+    }
+
+    if (!use_damage) {
+        FBLOG_WARN(instance->ext_instance_ref, "XDamage is not available, frames will be updated periodically instead of event-based, performance may be reduced");
+    } else {
+        FBLOG_INFO(instance->ext_instance_ref, "XDamage is available");
+    }
+    
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
@@ -383,83 +415,99 @@ static int generate(void *data) {
 
         // listen for events
         XSelectInput(instance->display, instance->window, StructureNotifyMask);
+        if (use_damage) {
+            damage = XDamageCreate(instance->display, instance->window, XDamageReportNonEmpty);
+        }
 
+        bool update_available = TRUE;
         while (!instance->stop_generator) {
-            clock_t benchStart = clock(); // DEBUG
-            if (use_shm) {
-                if (!XShmGetImage(instance->display, instance->window, instance->X_image, 0, 0, AllPlanes)) {
-                    FBLOG_WARN(instance->ext_instance_ref, "XShmGetImage failed");
+            if (!use_damage || update_available) {
+                update_available = FALSE;
+                
+                clock_t benchStart = clock(); // DEBUG
+                if (use_shm) {
+                    if (!XShmGetImage(instance->display, instance->window, instance->X_image, 0, 0, AllPlanes)) {
+                        FBLOG_WARN(instance->ext_instance_ref, "XShmGetImage failed");
+                        break;
+                    }
+                } else {
+                    instance->X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, format);
+                    if (!instance->X_image) {
+                        FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
+                        break;
+                    }
+                }
+                clock_t benchGotImage = clock(); // DEBUG
+
+                int work_buffer = (instance->complete_buffer + 1) % 2;
+                uint32_t *in = (uint32_t*) instance->X_image->data;
+                unsigned char *out = instance->buffers[work_buffer];
+            
+                int red_shift = 0;
+                int green_shift = 8;
+                int blue_shift = 16;
+                if (instance->X_image->byte_order == LSBFirst) {
+                    red_shift = 16;
+                    blue_shift = 0;
+                } else {
+                    FBLOG_WARN(instance->ext_instance_ref, "unsupported XImage byte order");
                     break;
                 }
-            } else {
-                instance->X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, format);
-                if (!instance->X_image) {
-                    FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
-                    break;
-                }
-            }
-            clock_t benchGotImage = clock(); // DEBUG
 
-            int work_buffer = (instance->complete_buffer + 1) % 2;
-            uint32_t *in = (uint32_t*) instance->X_image->data;
-            unsigned char *out = instance->buffers[work_buffer];
+                for (int y=0; y<attrs.height; y++) {
+                    for (int x=0; x<attrs.width; x++) {
+                        *(out++) = ((*in) & instance->X_image->red_mask) >> red_shift;
+                        *(out++) = ((*in) & instance->X_image->green_mask) >> green_shift;
+                        *(out++) = ((*in) & instance->X_image->blue_mask) >> blue_shift;
+                        in++;
+                    }
+                }
+                clock_t benchConverted = clock(); // DEBUG
+
+                // mark buffer as complete
+                if (mtx_lock(&instance->mutex) != thrd_success) {
+                    // just drop the frame if we cannot get hold of our mutex
+                    FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
+                    XDestroyImage(instance->X_image);
+                    instance->X_image = NULL;
+                    continue;
+                }
+
+                instance->complete_buffer = work_buffer;
+                instance->frame_token++;
+
+                mtx_unlock(&instance->mutex);
+                clock_t benchUnlocked = clock(); // DEBUG
+
+                framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
+                clock_t benchPublished = clock(); // DEBUG
+
+                if (!use_shm) {
+                    XDestroyImage(instance->X_image);
+                    instance->X_image = NULL;
+                }
             
-            int red_shift = 0;
-            int green_shift = 8;
-            int blue_shift = 16;
-            if (instance->X_image->byte_order == LSBFirst) {
-                red_shift = 16;
-                blue_shift = 0;
-            } else {
-                FBLOG_WARN(instance->ext_instance_ref, "unsupported XImage byte order");
-                break;
-            }
+                clock_t benchDone = clock(); // DEBUG
 
-            for (int y=0; y<attrs.height; y++) {
-                for (int x=0; x<attrs.width; x++) {
-                    *(out++) = ((*in) & instance->X_image->red_mask) >> red_shift;
-                    *(out++) = ((*in) & instance->X_image->green_mask) >> green_shift;
-                    *(out++) = ((*in) & instance->X_image->blue_mask) >> blue_shift;
-                    in++;
-                }
-            }
-            clock_t benchConverted = clock(); // DEBUG
+                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
 
-            // mark buffer as complete
-            if (mtx_lock(&instance->mutex) != thrd_success) {
-                // just drop the frame if we cannot get hold of our mutex
-                FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
-                XDestroyImage(instance->X_image);
-                instance->X_image = NULL;
-                continue;
-            }
-
-            instance->complete_buffer = work_buffer;
-            instance->frame_token++;
-
-            mtx_unlock(&instance->mutex);
-            clock_t benchUnlocked = clock(); // DEBUG
-
-            framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
-            clock_t benchPublished = clock(); // DEBUG
-
-            if (!use_shm) {
-                XDestroyImage(instance->X_image);
-                instance->X_image = NULL;
+                processed_image = TRUE;
             }
             
-            clock_t benchDone = clock(); // DEBUG
-
-            FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
-
-            processed_image = TRUE;
-
             // process events
             bool size_changed = FALSE;
             while (XPending(instance->display) > 0) {
                 XNextEvent(instance->display, &event);
 
-                if (event.type == ConfigureNotify) {
+                if (use_damage && (event.type == damage_event_base)) {
+                    XDamageNotifyEvent *e = (XDamageNotifyEvent*) &event;
+                    if (e->drawable == instance->window) {
+                        FBLOG_TRACE(instance->ext_instance_ref, "XDamage indicates update");
+                        XDamageSubtract(instance->display, e->damage, None, None);
+                        update_available = TRUE;
+                        continue;
+                    }
+                } else if (event.type == ConfigureNotify) {
                     XConfigureEvent *e = (XConfigureEvent*) &event;
                     if ((e->window == instance->window) && ((e->width != attrs.width) || (e->height != attrs.height))) {
                         FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs.width, attrs.height, e->width, e->height);
@@ -472,10 +520,16 @@ static int generate(void *data) {
                 FBLOG_INFO(instance->ext_instance_ref, "window size changed, reinitializing");
                 break;
             }
+            if (use_damage && !update_available) {
+                thrd_yield();
+            }
         }
 
         // if we got here we are reinitializing and need to reset
         XSelectInput(instance->display, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
+        if (use_damage) {
+            XDamageDestroy(instance->display, damage);
+        }
         
         if (use_shm && !shm_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
