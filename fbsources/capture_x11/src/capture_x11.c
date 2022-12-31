@@ -60,6 +60,11 @@ static const struct timespec wait_for_window = {
     .tv_nsec = 0
 };
 
+static const struct timespec wait_after_error = {
+    .tv_sec = 1,
+    .tv_nsec = 0
+};
+
 // TODO: check extensions; required: composite >= 0.2, XShm for shm
 
 static bool find_window(fbsource_capture_x11_t *instance, Window window, Window *matched_window, char *exact_name) {
@@ -223,6 +228,7 @@ static int generate(void *data) {
     int res;
 
     bool success;
+    bool processed_image = FALSE;
     XWindowAttributes attrs;
     
     Window root_window = DefaultRootWindow(instance->display);
@@ -237,6 +243,7 @@ static int generate(void *data) {
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
         success = FALSE;
+        processed_image = FALSE;
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching window");
             if (find_window(instance, root_window, &instance->window, instance->window_search_name_exact)) {
@@ -440,6 +447,8 @@ static int generate(void *data) {
             clock_t benchDone = clock(); // DEBUG
 
             FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
+
+            processed_image = TRUE;
         }
 
         // if we got here we are reinitializing and need to reset
@@ -451,6 +460,11 @@ static int generate(void *data) {
         if (!generator_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "worker reset failed, terminating");
             break;
+        }
+
+        // prevent rapid reinitialization after errors; only reinitialize without delay if we processed at least one image before
+        if (!processed_image) {
+            thrd_sleep(&wait_after_error, NULL);
         }
     }
 
