@@ -429,7 +429,9 @@ static int generate(void *data) {
         // retrieve a SHM memory segment according to XImage specifications
         if (use_shm) {
             instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->bytes_per_line * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
-            if (instance->shm_info.shmid == -1) {
+            if (instance->shm_info.shmid != -1) {
+                instance->shm_assigned = TRUE;
+            } else {
                 FBLOG_WARN(instance->ext_instance_ref, "shmget failed (errno %d), disabling SHM support", errno);
                 use_shm = FALSE;
                 if (!shm_reset(instance, "failed initialization")) {
