@@ -590,10 +590,15 @@ static int generate(void *data) {
             }
         }
 
-        // if we got here we are reinitializing and need to reset
+        // if we got here we are reinitializing or stopping and need to reset
         XSelectInput(instance->display, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
         if (use_damage) {
             XDamageDestroy(instance->display, damage);
+        }
+
+        // further resets will be handled for termination, no need to do it twice
+        if (instance->stop_generator) {
+            break;
         }
         
         if (use_shm && !shm_reset(instance, "reinitialization")) {
