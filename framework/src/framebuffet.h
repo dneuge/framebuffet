@@ -358,7 +358,7 @@ typedef struct {
 extern "C" {
 #endif
 
-// API meant only for fbsource modules to publish updates to framework
+// API meant only for fbsource modules
 int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
 int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
@@ -367,7 +367,7 @@ void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, v
 
 char* framebuffet_get_source_name_reference(void *instance_ref); // does not return a copy!
 
-// API for general use
+// API meant only for applications; should not be called from modules
 framebuffet_t* framebuffet_init();
 int framebuffet_destroy(framebuffet_t *framebuffet);
 
@@ -386,9 +386,11 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
 int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config);
 
 int framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
+int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
+
+// API for general use (applications and modules)
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);
 
-int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
 int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance);
