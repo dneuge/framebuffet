@@ -25,7 +25,7 @@ static fbcollections_map_entry_t* fbcollections_map_head(fbcollections_map_entry
     return entry;
 }
 
-static fbcollections_map_entry_t* fbcollections_map_tail(fbcollections_map_entry_t *entry) {
+fbcollections_map_entry_t* fbcollections_map_tail(fbcollections_map_entry_t *entry) {
     while (entry->_next != NULL) {
         entry = (fbcollections_map_entry_t*) entry->_next;
     }

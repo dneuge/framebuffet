@@ -24,6 +24,7 @@ int fbcollections_map_put_and_free_old_entry_with_payloads(fbcollections_map_ent
 fbcollections_map_entry_t* fbcollections_map_remove(fbcollections_map_entry_t *entry, void *key, unsigned long key_size);
 void fbcollections_map_free_entry_and_payloads(fbcollections_map_entry_t *entry);
 void fbcollections_map_free_map_and_payloads(fbcollections_map_entry_t *entry);
+fbcollections_map_entry_t* fbcollections_map_tail(fbcollections_map_entry_t *entry);
 
 #ifdef __cplusplus
 }
