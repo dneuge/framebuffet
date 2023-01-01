@@ -54,6 +54,24 @@
 #define FBERROR_MEMORY_ALLOCATION 5
 
 /**
+ * @def FBERROR_IN_USE
+ * @brief error code indicating a resource cannot be freed because it is still in use
+ */
+#define FBERROR_IN_USE 6
+
+/**
+ * @def FBERROR_DESTRUCTION_PENDING
+ * @brief Error code indicating that a request cannot be fulfilled because destruction is pending. Check that you didn't continue to use a source instance after releasing it. This error is expected when publishing updates from a source module whose destruction is about to be triggered. If you receive this error when trying to destroy an instance this is essentially a "double-free" soft error or race condition; the source has already been marked to be destroyed.
+ */
+#define FBERROR_DESTRUCTION_PENDING 7
+
+/**
+ * @def FBERROR_MODULE_DESTRUCTOR_FAILED
+ * @brief Error code returned framework-side from a failed call to a module's destructor. Further behaviour is unspecified (see documentation of fbsource_destroy_f) with at least a memory leak or even external side-effects that cannot be cleaned up (such as shared memory not being released). You probably want to terminate your application as soon as you see encounter this error and inform users about the issue.
+ */
+#define FBERROR_MODULE_DESTRUCTOR_FAILED 8
+
+/**
  * @def FBLOG_LEVEL_ERROR
  * @brief Messages logged with this level describe critical errors which prevent further operation (recovery is unlikely).
  */
@@ -144,6 +162,7 @@ typedef struct {
 
     fblog_receiver_f log_receiver;
     fblog_level_t minimum_log_level;
+    uint8_t destruction_pending;
 } framebuffet_t;
 
 typedef struct {
@@ -325,11 +344,11 @@ typedef fbsource_module_t (*fbsource_init_f)(void);
 #endif
 
 typedef struct {
+    // all fields are copies
     fbsource_module_t *module;
     char *name;
     char *license;
 } fbsource_module_registration_t;
-
 
 typedef struct {
     // always lock the mutex and back off if destruction_pending
@@ -352,6 +371,8 @@ typedef struct {
     mtx_t mutex;
     fbsource_module_instance_frame_update_t *frame_updates;
     int num_buffers;
+    int num_users;
+    uint8_t destruction_pending;
 } fbsource_module_instance_entry_t;
 
 #ifdef __cplusplus
@@ -369,7 +390,8 @@ char* framebuffet_get_source_name_reference(void *instance_ref); // does not ret
 
 // API meant only for applications; should not be called from modules
 framebuffet_t* framebuffet_init();
-int framebuffet_destroy(framebuffet_t *framebuffet);
+int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed);
+int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed);
 
 void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver_f log_receiver);
 int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level);
@@ -386,10 +408,13 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
 int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config);
 
 int framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
+int framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name);
+int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed);
 int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
 
 // API for general use (applications and modules)
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);
+int framebuffet_release_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance);
 
 int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 

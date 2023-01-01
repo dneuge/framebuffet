@@ -52,6 +52,10 @@
 
 #define FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE 7
 
+#define FB_DESTROY_MAX_TRAVERSALS 500 /* used only to stop traversal due to concurrent changes */
+#define FB_DESTROY_MAX_ATTEMPTS_DEFAULT 25
+#define FB_DESTROY_MILLIS_BETWEEN_ATTEMPTS_DEFAULT 200
+
 typedef struct {
     int major; // to be incremented on breaking changes
     int minor; // to be incremented as functionality gets extended which does not break (structural) compatibility
@@ -291,9 +295,203 @@ framebuffet_t* framebuffet_init() {
     return NULL;
 }
 
-int framebuffet_destroy(framebuffet_t *framebuffet) {
-    // FIXME: implement (stop and destroy all module instances and the framework instance)
-    return FBERROR_UNSPECIFIC;
+int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed) {
+    int err;
+
+    // log on INFO level on first destruction attempt
+    if (!framebuffet->destruction_pending) {
+        FBLOG_INFO("Frame Buffet framework instance is shutting down ");
+    } else {
+        FBLOG_DEBUG("framework retries shutdown");
+    }
+
+    // mark destruction early (outside of mutex); that flag only ever transitions
+    // from 0 => 1 and isn't needed for destruction calls but it prevents further
+    // registrations from being started
+    framebuffet->destruction_pending = 1;
+
+    // barrier: yield, lock and relock on framework mutex to make sure everyone who might have waited has
+    // had a chance to notice we want to shut down (assuming mutexes are served FIFO)
+    thrd_yield();
+    if (mtx_lock(&framebuffet->mutex) == thrd_success) {
+        mtx_unlock(&framebuffet->mutex);
+    } else {
+        FBLOG_WARN("framework barrier mutex lock before framework instance destruction failed");
+    }
+    
+    // all sources must be destroyed before we can destroy the framework instance
+    err = framebuffet_destroy_unused_source_instances(framebuffet, num_sources_destroyed);
+    if (framebuffet->sources && framebuffet->sources->_next) {
+        FBLOG_DEBUG("There are still some source instances left; framework instance cannot be destroyed yet. (error: %d)", err);
+        return (err != FBERROR_NONE) ? err : FBERROR_IN_USE;
+    } else if (err != FBERROR_NONE) {
+        // NOTE: this propagates FBERROR_MODULE_DESTRUCTOR_FAILED in particular; caller should retry if wanted
+        FBLOG_DEBUG("Destruction of source instances failed. (error: %d)", err);
+        return err;
+    }
+
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("unable to lock framework mutex for destruction");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    // confirm that we really have no source instances left, then destroy
+    if (!framebuffet->sources) {
+        FBLOG_DEBUG("framework has no sources map");
+    } else {
+        if (framebuffet->sources->_next) {
+            FBLOG_WARN("There are still source instances left, despite cleanup having succeeded; framework instance cannot be destroyed yet.");
+            mtx_unlock(&framebuffet->mutex);
+            return FBERROR_IN_USE;
+        }
+
+        FBLOG_DEBUG("destroying framework sources map");
+        fbcollections_map_free_map_and_payloads(framebuffet->sources);
+        framebuffet->sources = NULL;
+
+        FBLOG_DEBUG("framework sources map destroyed");
+    }
+
+    // clear configurations
+    if (!framebuffet->configurations) {
+        FBLOG_DEBUG("framework has no configurations map");
+    } else {
+        FBLOG_DEBUG("destroying framework configurations map");
+        fbcollections_map_entry_t *entry = fbcollections_map_tail(framebuffet->configurations);
+        while (entry && (entry != framebuffet->configurations)) {
+            // values are maps
+            if (entry->value) {
+                fbcollections_map_free_map_and_payloads(entry->value);
+                entry->value = NULL;
+                entry->value_size = 0;
+            }
+
+            fbcollections_map_entry_t *prev = entry->_prev;
+            if (!prev) {
+                FBLOG_ERROR("while clearing the configurations map Frame Buffet encountered an apparent head of map which is not the actual map head; this should not happen, please report as a bug");
+                break;
+            }
+
+            prev->_next = NULL;
+            entry->_prev = NULL;
+
+            fbcollections_map_free_entry_and_payloads(entry);
+            entry = prev;
+        }
+
+        if (framebuffet->configurations->_next) {
+            FBLOG_ERROR("after clearing configurations map Frame Buffet still has entries remaining; this should not happen and may cause a memory leak, please report as a bug");
+        }
+
+        fbcollections_map_free_map_and_payloads(framebuffet->configurations);
+        framebuffet->configurations = NULL;
+
+        FBLOG_DEBUG("framework configurations map destroyed");
+    }
+    
+    // clear module registrations
+    if (!framebuffet->modules) {
+        FBLOG_DEBUG("framework has no modules map");
+    } else {
+        FBLOG_DEBUG("destroying framework modules map");
+        fbcollections_map_entry_t *entry = fbcollections_map_tail(framebuffet->modules);
+        while (entry && (entry != framebuffet->modules)) {
+            if (entry->value) {
+                // all fields have been copied
+                fbsource_module_registration_t *registration = entry->value;
+                if (registration->name) {
+                    free(registration->name);
+                    
+                    // module name doubles as key
+                    entry->key = NULL;
+                }
+                if (registration->license) {
+                    free(registration->license);
+                }
+                if (registration->module) {
+                    free(registration->module);
+                }
+                free(registration);
+                
+                entry->value = NULL;
+                entry->value_size = 0;
+            }
+
+            fbcollections_map_entry_t *prev = entry->_prev;
+            if (!prev) {
+                FBLOG_ERROR("while clearing the modules map Frame Buffet encountered an apparent head of map which is not the actual map head; this should not happen, please report as a bug");
+                break;
+            }
+
+            prev->_next = NULL;
+            entry->_prev = NULL;
+
+            fbcollections_map_free_entry_and_payloads(entry);
+            entry = prev;
+        }
+
+        if (framebuffet->modules->_next) {
+            FBLOG_ERROR("after clearing modules map Frame Buffet still has entries remaining; this should not happen and may cause a memory leak, please report as a bug");
+        }
+
+        fbcollections_map_free_map_and_payloads(framebuffet->modules);
+        framebuffet->modules = NULL;
+
+        FBLOG_DEBUG("framework modules map destroyed");
+    }
+    
+    FBLOG_INFO("Frame Buffet finishes destruction; this is the last message logged by this instance");
+    framebuffet->log_receiver = NULL;
+    mtx_unlock(&framebuffet->mutex);
+
+    mtx_destroy(&framebuffet->mutex);
+
+    free(framebuffet);
+    
+    return FBERROR_NONE;
+}
+
+int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed) {
+    uint8_t complete = 0;
+
+    if (module_destructor_failed) {
+        *module_destructor_failed = 0;
+    }
+    
+    if (maximum_attempts < 1) {
+        maximum_attempts = FB_DESTROY_MAX_ATTEMPTS_DEFAULT;
+    }
+
+    if (millis_between_attempts < 1) {
+        millis_between_attempts = FB_DESTROY_MILLIS_BETWEEN_ATTEMPTS_DEFAULT;
+    }
+
+    FBLOG_DEBUG("Frame Buffet instance destruction will be attempted at most %d times with a delay of %ld milliseconds in between", maximum_attempts, millis_between_attempts);
+
+    struct timespec delay = {0};
+    delay.tv_sec = millis_between_attempts / 1000;
+    delay.tv_nsec = (millis_between_attempts % 1000) * 1000000;
+    
+    for (int attempt=1; attempt<=maximum_attempts; attempt++) {
+        int num_sources_destroyed_in_attempt = 0;
+        int err = framebuffet_destroy(framebuffet, &num_sources_destroyed_in_attempt);
+        *num_sources_destroyed = (*num_sources_destroyed) + num_sources_destroyed_in_attempt;
+
+        if (err == FBERROR_NONE) {
+            // we are done
+            complete = 1;
+            break;
+        } else if (err == FBERROR_MODULE_DESTRUCTOR_FAILED) {
+            // notify about that error
+            if (module_destructor_failed) {
+                *module_destructor_failed = 1;
+            }
+        }
+
+        thrd_sleep(&delay, NULL);
+    }
+
+    return complete ? FBERROR_NONE : FBERROR_IN_USE;
 }
 
 static void destroy_frame_update_entry(fbsource_module_instance_frame_update_t *frame_update) {
@@ -340,12 +538,25 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     
     fbsource_module_instance_entry_t *instance = instance_ref;
     framebuffet_t *framebuffet = instance->framebuffet;
+
+    if (instance->destruction_pending) {
+        // this is expected to happen if a worker thread is still running just before the module is asked to destroy the instance
+        FBLOG_DEBUG("framebuffet_publish_num_buffers: source instance \"%s\" has been marked for destruction (early check)", instance->instance_name);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
     
     if (mtx_lock(&instance->mutex) != thrd_success) {
         FBLOG_WARN("framebuffet_publish_num_buffers for \"%s\" failed to lock mutex, unable to publish", instance->instance_name);
         return FBERROR_UNSPECIFIC;
     }
 
+    if (instance->destruction_pending) {
+        // this is expected to happen if a worker thread is still running just before the module is asked to destroy the instance
+        FBLOG_DEBUG("framebuffet_publish_num_buffers: source instance \"%s\" has been marked for destruction (late check)", instance->instance_name);
+        mtx_unlock(&instance->mutex);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (num_buffers == instance->num_buffers) {
         // nothing to do if number of buffers has not changed
         FBLOG_DEBUG("framebuffet_publish_num_buffers got same number of buffers as already published for \"%s\" (%d), nothing to do", instance->instance_name, instance->num_buffers);
@@ -436,11 +647,25 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
 
 int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
     fbsource_module_instance_entry_t *instance = instance_ref;
+    framebuffet_t *framebuffet = instance->framebuffet;
 
+    if (instance->destruction_pending) {
+        // this is expected to happen if a worker thread is still running just before the module is asked to destroy the instance
+        FBLOG_DEBUG("framebuffet_publish_update: source instance \"%s\" has been marked for destruction (early check)", instance->instance_name);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
     }
 
+    if (instance->destruction_pending) {
+        // this is expected to happen if a worker thread is still running just before the module is asked to destroy the instance
+        FBLOG_DEBUG("framebuffet_publish_update: source instance \"%s\" has been marked for destruction (late check)", instance->instance_name);
+        mtx_unlock(&instance->mutex);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (buffer_id >= instance->num_buffers || buffer_id < 0) {
         mtx_unlock(&instance->mutex);
         return FBERROR_NO_SUCH_BUFFER;
@@ -533,9 +758,20 @@ int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
 }
 
 int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor) {
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("unable to register new modules, framework is pending for destruction (early check)");
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for module registration");
         return FBERROR_UNSPECIFIC;
+    }
+    
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("unable to register new modules, framework is pending for destruction (late check)");
+        mtx_unlock(&framebuffet->mutex);
+        return FBERROR_DESTRUCTION_PENDING;
     }
     
     fbsource_module_registration_t *registration = malloc(sizeof(fbsource_module_registration_t));
@@ -590,11 +826,26 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
         return FBERROR_UNSPECIFIC;
     }
     
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("unable to set new configurations, framework is pending for destruction (early check)");
+        fbcollections_map_free_map_and_payloads(copied_config);
+        free(key);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex to set configuration \"%s\"", config_name);
         fbcollections_map_free_map_and_payloads(copied_config);
         free(key);
         return FBERROR_UNSPECIFIC;
+    }
+
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("unable to set new configurations, framework is pending for destruction (late check)");
+        mtx_unlock(&framebuffet->mutex);
+        fbcollections_map_free_map_and_payloads(copied_config);
+        free(key);
+        return FBERROR_DESTRUCTION_PENDING;
     }
 
     fbcollections_map_entry_t *previous_config = NULL;
@@ -663,10 +914,23 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         return FBERROR_MEMORY_ALLOCATION;
     }
 
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("framework is pending destruction, sources can no longer be instantiated (early check)");
+        free(key);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for source instantiation");
         free(key);
         return FBERROR_UNSPECIFIC;
+    }
+
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("framework is pending destruction, sources can no longer be instantiated (early check)");
+        mtx_unlock(&framebuffet->mutex);
+        free(key);
+        return FBERROR_DESTRUCTION_PENDING;
     }
 
     fbcollections_map_entry_t *registration_entry = fbcollections_map_find_key(framebuffet->modules, module_name, strlen(module_name) + 1);
@@ -783,6 +1047,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
         return err;
     }
     instance->data = data;
+    instance->num_users = 1; // whoever created the source instance becomes the first user
 
     // register to known sources
     FBLOG_TRACE("recording source \"%s\", size=%ld", key, strlen(key)+1);
@@ -811,26 +1076,362 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     return FBERROR_NONE;
 }
 
+int framebuffet_release_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance) {
+    int out_error = FBERROR_NONE;
+    
+    if (source_instance->destruction_pending) {
+        FBLOG_WARN("framebuffet_release_source_instance: instance destruction is already pending; usage should already have been discontinued before this call (early check)");
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
+    if (mtx_lock(&source_instance->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock source mutex for release");
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    if (source_instance->destruction_pending) {
+        FBLOG_WARN("framebuffet_release_source_instance: instance destruction is already pending; usage should already have been discontinued before this call (late check)");
+        out_error = FBERROR_DESTRUCTION_PENDING;
+    } else if (source_instance->num_users > 0) {
+        source_instance->num_users--;
+    } else {
+        FBLOG_WARN("framebuffet_release_source_instance: source \"%s\" has been released more often than used, resetting number of users from %d to 0", source_instance->instance_name, source_instance->num_users);
+        source_instance->num_users = 0;
+    }
+
+    mtx_unlock(&source_instance->mutex);
+
+    return out_error;
+}
+
+static int framebuffet_destroy_source_instance_internal(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance) {
+    int out_error = FBERROR_NONE;
+
+    // start by flagging the instance as pending for destruction if not already flagged by another thread
+    if (source_instance->destruction_pending) {
+        FBLOG_WARN("destruction is already pending (early check)");
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
+    if (mtx_lock(&source_instance->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock source mutex for destruction");
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (source_instance->destruction_pending) {
+        FBLOG_WARN("destruction is already pending (late check)");
+        out_error = FBERROR_DESTRUCTION_PENDING;
+    } else if (source_instance->num_users > 0) {
+        FBLOG_DEBUG("instance \"%s\" is still used %d times, unable to destroy", source_instance->instance_name, source_instance->num_users);
+        out_error = FBERROR_IN_USE;
+    } else {
+        FBLOG_DEBUG("flagging \"%s\" as destruction pending", source_instance->instance_name);
+        source_instance->destruction_pending = 1;
+    }
+
+    mtx_unlock(&source_instance->mutex);
+
+    // quit if we already encountered an error
+    if (out_error != FBERROR_NONE) {
+        return out_error;
+    }
+
+    // unregister from framework
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        // uuuh, this is not good... if we cannot safely deregister the source instance it can still be
+        // looked up and we cannot destroy it, so we need to actually keep it
+        FBLOG_WARN("unable to lock framework for destruction of source instance \"%s\", instance will be kept available", source_instance->instance_name);
+        source_instance->destruction_pending = 0; // no lock needed at this point
+        return FBERROR_UNSPECIFIC;
+    }
+
+    // remove source instance entry
+    fbcollections_map_entry_t* source_instance_entry = fbcollections_map_remove(framebuffet->sources, source_instance->instance_name, strlen(source_instance->instance_name) + 1);
+    mtx_unlock(&framebuffet->mutex);
+    
+    if (!source_instance_entry) {
+        // this is some implementation error in our framework code; we should keep the source instance alive but
+        // log an actual error-level message because it's completely unexpected and other strange things might happen as well
+        FBLOG_ERROR("failed to unregister source instance \"%s\" (not found) - this is probably a bug in Frame Buffet framework, please report; instance will be kept available", source_instance->instance_name);
+        source_instance->destruction_pending = 0; // no lock needed at this point
+        return FBERROR_UNSPECIFIC;
+    }
+
+    free(source_instance_entry->key);
+    free(source_instance_entry);
+    source_instance_entry = NULL;
+
+    // barriers to make sure all other threads got a chance to know destruction is pending
+    // (assuming locks are served FIFO we should be the last one locking the mutexes at this point)
+    // if mutexes cannot be locked for barriers we can (and should!) still try continue but warn
+    // the user nevertheless
+    
+    // barrier #1: framework (lookup of references to the old instance)
+    thrd_yield();
+    if (mtx_lock(&framebuffet->mutex) == thrd_success) {
+        mtx_unlock(&framebuffet->mutex);
+    } else {
+        FBLOG_WARN("final framework mutex lock for source instance \"%s\" before destruction failed", source_instance->instance_name);
+    }
+    
+    // barrier #2: source instance (usage tracker, destruction flag)
+    thrd_yield();
+    if (mtx_lock(&source_instance->mutex) == thrd_success) {
+        mtx_unlock(&source_instance->mutex);
+    } else {
+        FBLOG_WARN("final source mutex lock for source instance \"%s\" before destruction failed", source_instance->instance_name);
+    }
+
+    // destroy the module
+    FBLOG_DEBUG("call to module \"%s\" to destroy source instance \"%s\"", source_instance->module->name, source_instance->instance_name);
+    int err = source_instance->module->module->_destroy(source_instance->data);
+    if (err != FBERROR_NONE) {
+        FBLOG_ERROR("module \"%s\" failed to destroy source instance \"%s\" (error: %d); further behaviour is unspecified - framework keeps module instance record alive as a planned memory leak but whatever might be left running may still crash the application at some point", source_instance->module->name, source_instance->instance_name, err);
+        out_error = FBERROR_MODULE_DESTRUCTOR_FAILED;
+    }
+    
+    // destroy frame update records
+    if (source_instance->frame_updates) {
+        FBLOG_DEBUG("framebuffet_destroy_source_instance for \"%s\": destroying all frame update records", source_instance->instance_name);
+        destroy_frame_update_entries(source_instance->frame_updates, 0, source_instance->num_buffers);
+        free(source_instance->frame_updates);
+        source_instance->num_buffers = 0;
+        source_instance->frame_updates = NULL;
+    }
+
+    // destroy module instance structure
+    if (out_error != FBERROR_NONE) {
+        FBLOG_WARN("memleak: something went wrong (error %d), not freeing framework-side source module instance record", out_error);
+    } else {
+        FBLOG_DEBUG("freeing framework-side source module instance record for \"%s\"", source_instance->instance_name);
+
+        mtx_destroy(&source_instance->mutex);
+
+        // "terminate" what the structure pointed to before freeing just in cause someone still kept a reference
+        source_instance->instance_name[0] = 0;
+        source_instance->log_prefix_length = 0;
+        source_instance->log_prefix[0] = 0;
+        source_instance->framebuffet = NULL;
+        source_instance->module = NULL;
+        source_instance->data = NULL;
+        source_instance->num_users = 0;
+        
+        free(source_instance->log_prefix);
+        source_instance->log_prefix = NULL;
+        
+        free(source_instance->instance_name);
+        source_instance->instance_name = NULL;
+
+        free(source_instance);
+        source_instance = NULL;
+
+        FBLOG_DEBUG("freed framework-side source module instance record");
+    }
+
+    return out_error;
+}
+
+int framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name) {
+    int out_error = FBERROR_NONE;
+    fbsource_module_instance_entry_t *instance = NULL;
+    
+    FBLOG_DEBUG("framebuffet_destroy_source_instance \"%s\"", instance_name);
+    
+    if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+        FBLOG_WARN("failed to lock framework mutex for source destruction lookup");
+        return FBERROR_UNSPECIFIC;
+    }
+    
+    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, strlen(instance_name)+1);
+    
+    if (instance_entry && instance_entry->value) {
+        instance = instance_entry->value;
+        if (instance->destruction_pending) {
+            out_error = FBERROR_DESTRUCTION_PENDING;
+            instance = NULL;
+        }
+    } else {
+        FBLOG_WARN("framebuffet_destroy_source_instance: source \"%s\" could not be found", instance_name);
+        out_error = FBERROR_UNSPECIFIC;
+    }
+    
+    mtx_unlock(&framebuffet->mutex);
+    
+    if (out_error == FBERROR_NONE) {
+        out_error = framebuffet_destroy_source_instance_internal(framebuffet, instance);
+    }
+
+    if (out_error == FBERROR_NONE) {
+        FBLOG_INFO("source instance \"%s\" has been destroyed", instance_name);
+    } else if (out_error == FBERROR_DESTRUCTION_PENDING) {
+        FBLOG_WARN("source \"%s\" is already pending destruction", instance_name);
+    }
+
+    return out_error;
+}
+
+int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed) {
+    // NOTE: search will back off on first occasion when instance destruction fails with an unexpected error
+    
+    FBLOG_DEBUG("searching for unused source instances to destroy");
+
+    *num_destroyed = 0;
+    
+    fbcollections_map_entry_t *entry = NULL;
+    fbcollections_map_entry_t *wanted_entry = NULL;
+    char *instance_name = NULL;
+
+    int err = FBERROR_NONE;
+    uint8_t abort = 0;
+    uint8_t found_in_use = 0;
+    uint8_t found_destruction_pending = 0;
+
+    // for-loop only limits the maximum number of traverals
+    for (int i=0; i<FB_DESTROY_MAX_TRAVERSALS; i++) {
+        if (mtx_lock(&framebuffet->mutex) != thrd_success) {
+            FBLOG_WARN("failed to lock framework mutex while searching for source instances to destroy");
+            return FBERROR_UNSPECIFIC;
+        }
+
+        entry = fbcollections_map_tail(framebuffet->sources);
+
+        // The map list is processed back to front and may change in between calls:
+        // - successfully destroyed entries are expected to disappear on next iteration
+        // - failed attempts mean the entry will stay
+        // - we ignore possible race conditions with added entries in between calls
+        //   (applications are advised not to call functions changing registrations threaded, anyway)
+        //
+        // If we already proccessed an entry in a previous iteration we have that entry's predecessor
+        // set as wanted_entry. We search that entry to check if it is still in the list (if it isn't
+        // we have some sort of concurrency issue).
+        //
+        // If we don't have a wanted_entry we just take the map tail.
+        if (wanted_entry) {
+            while (entry && entry != wanted_entry) {
+                entry = entry->_prev;
+            }
+        }
+
+        // stop if we don't have an entry or hit the map head (where _prev is null)
+        if (!entry || !entry->_prev) {
+            break;
+        }
+
+        fbsource_module_instance_entry_t *instance = entry->value;
+
+        // remember the predecessor to search for it on next iteration
+        wanted_entry = entry->_prev;
+            
+        // create a copy of the instance's name we want to destroy (if it is unused)
+        instance_name = NULL;
+        if (instance->num_users > 0) {
+            // remember that we saw at least one module still being in use
+            found_in_use = 1;
+        } else {
+            instance_name = copy_string(instance->instance_name);
+            if (!instance_name) {
+                mtx_unlock(&framebuffet->mutex);
+                FBLOG_WARN("failed to copy instance name");
+                return FBERROR_MEMORY_ALLOCATION;
+            }
+        }
+
+        mtx_unlock(&framebuffet->mutex);
+
+        // destroy instance if we found one (otherwise we didn't copy the name)
+        if (instance_name) {
+            FBLOG_DEBUG("instance \"%s\" seems to be unused, trying to destroy", instance_name);
+            err = framebuffet_destroy_source_instance_internal(framebuffet, instance);
+            
+            if (err == FBERROR_IN_USE) {
+                FBLOG_DEBUG("instance \"%s\" turned out to actually still be in use, continuing", instance_name);
+                found_in_use = 1;
+            } else if (err == FBERROR_DESTRUCTION_PENDING) {
+                FBLOG_DEBUG("unused instance \"%s\" is already being destroyed, continuing", instance_name);
+                found_destruction_pending = 1;
+            } else if (err == FBERROR_NONE) {
+                FBLOG_DEBUG("unused instance \"%s\" has been successfully destroyed, continuing", instance_name);
+                *num_destroyed = (*num_destroyed) + 1;
+            } else {
+                FBLOG_WARN("unused instance \"%s\" could not be destroyed (error: %d), aborting", err);
+                abort = 1;
+            }
+            
+            free(instance_name);
+            instance_name = NULL;
+        }
+        
+        if (abort) {
+            break;
+        }
+    }
+
+    // propagate last encountered error if we aborted
+    if (abort) {
+        return (err != FBERROR_NONE) ? err : FBERROR_UNSPECIFIC;
+    }
+
+    // knowing that some sources are still in use is more important than knowing that some modules have destruction already pending
+    if (found_in_use) {
+        return FBERROR_IN_USE;
+    }
+
+    if (found_destruction_pending) {
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+
+    return FBERROR_NONE;
+}
+
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
+    fbsource_module_instance_entry_t *instance = NULL;
+    
     size_t instance_name_size = strlen(instance_name) + 1;
     FBLOG_TRACE("framebuffet_get_source_instance instance_name=\"%s\", size=%lu", instance_name, instance_name_size);
+
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("framework is pending construction; sources cannot be leased any more (early check)");
+        return NULL;
+    }
     
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex for source lookup");
         return NULL;
     }
     
-    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
-
-    mtx_unlock(&framebuffet->mutex);
+    if (framebuffet->destruction_pending) {
+        FBLOG_WARN("framework is pending construction; sources cannot be leased any more (late check)");
+        mtx_unlock(&framebuffet->mutex);
+        return NULL;
+    }
     
-    FBLOG_TRACE("framebuffet_get_source_instance got entry %p for \"%s\", value %p", instance_entry, instance_name, (instance_entry ? instance_entry->value : NULL));
-
+    fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
     if (instance_entry && instance_entry->value) {
-        return instance_entry->value;
+        instance = instance_entry->value;
     }
 
-    return NULL;
+    if (instance->destruction_pending) { // early check without instance mutex
+        FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (early check)", instance_name);
+        instance = NULL;
+    } else {
+        if (mtx_lock(&instance->mutex) != thrd_success) {
+            FBLOG_WARN("failed to lock instance mutex for user increment, not returning instance");
+            instance = NULL;
+        } else {
+            if (instance->destruction_pending) { // late check with instance mutex
+                FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (late check)", instance_name);
+                instance = NULL;
+            } else {
+                FBLOG_DEBUG("framebuffet_get_source_instance incrementing users of \"%s\", was %d", instance_name, instance->num_users);
+                instance->num_users++;
+            }
+            mtx_unlock(&instance->mutex);
+        }
+    }
+
+    mtx_unlock(&framebuffet->mutex);
+
+    return instance;
 }
 
 int framebuffet_configure_source_instance(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t *config) {
@@ -863,10 +1464,19 @@ static const struct timespec wait_indefinitely = {
 };
 
 static int framebuffet_wait_for_update_internal(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, struct timespec wait_until) {
+    if (source_instance->destruction_pending || source_instance->framebuffet->destruction_pending) {
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (mtx_lock(&source_instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
     }
 
+    if (source_instance->destruction_pending || source_instance->framebuffet->destruction_pending) {
+        mtx_unlock(&source_instance->mutex);
+        return FBERROR_DESTRUCTION_PENDING;
+    }
+    
     if (buffer_id >= source_instance->num_buffers) {
         mtx_unlock(&source_instance->mutex);
         return FBERROR_NO_SUCH_BUFFER;
@@ -1253,6 +1863,14 @@ static int perform_json_action_create_source_instance(framebuffet_t *framebuffet
     if (config) {
         FBLOG_DEBUG("configure_from_json_action_create_configuration freeing map");
         fbcollections_map_free_map_and_payloads(config);
+    }
+
+    if (source_instance) {
+        int err2 = framebuffet_release_source_instance(framebuffet, source_instance);
+        if (err2 != FBERROR_NONE) {
+            FBLOG_WARN("configure_from_json_action_create_configuration failed to release source instance \"%s\" after creation", json_source_name->valuestring);
+        }
+        source_instance = NULL;
     }
     
     return err;
