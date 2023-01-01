@@ -484,16 +484,29 @@ static int apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_d
         return FBERROR_UNSPECIFIC;
     }
   
-    char *name = module_descriptor.name;
-    char *license = module_descriptor.license;
-
-    if (name == NULL || license == NULL) {
+    if (module_descriptor.name == NULL || module_descriptor.license == NULL) {
         FBLOG_WARN("module is missing name or license");
         return FBERROR_UNSPECIFIC;
     }
 
+    char *name = copy_string(module_descriptor.name);
+    if (!name) {
+        FBLOG_WARN("failed to copy module name");
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+    
+    char *license = copy_string(module_descriptor.license);
+    if (!license) {
+        FBLOG_WARN("failed to copy module license");
+        free(name);
+        return FBERROR_MEMORY_ALLOCATION;
+    }
+
     fbsource_module_t *module = malloc(sizeof(fbsource_module_t));
     if (module == NULL) {
+        FBLOG_WARN("failed to copy module operations structure");
+        free(name);
+        free(license);
         return FBERROR_MEMORY_ALLOCATION;
     }
 
