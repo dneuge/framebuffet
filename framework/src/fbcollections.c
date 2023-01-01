@@ -169,3 +169,25 @@ void fbcollections_map_free_map_and_payloads(fbcollections_map_entry_t *entry) {
         entry = prev;
     }
 }
+
+fbcollections_map_entry_t* fbcollections_map_remove(fbcollections_map_entry_t *entry, void *key, unsigned long key_size) {
+    fbcollections_map_entry_t *remove_entry = fbcollections_map_find_key(entry, key, key_size);
+
+    if (remove_entry) {
+        fbcollections_map_entry_t *prev = remove_entry->_prev;
+        fbcollections_map_entry_t *next = remove_entry->_next;
+
+        if (prev) {
+            prev->_next = next;
+        }
+        
+        if (next) {
+            next->_prev = prev;
+        }
+
+        remove_entry->_prev = NULL;
+        remove_entry->_next = NULL;
+    }
+    
+    return remove_entry;
+}
