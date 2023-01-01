@@ -586,11 +586,14 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
     fbcollections_map_entry_t *copied_config = fbcollections_map_copy_with_payloads(config);
     if (!copied_config) {
         FBLOG_WARN("framebuffet_set_configuration failed to copy provided configuration for \"%s\"", config_name);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
     
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex to set configuration \"%s\"", config_name);
+        fbcollections_map_free_map_and_payloads(copied_config);
+        free(key);
         return FBERROR_UNSPECIFIC;
     }
 
@@ -601,17 +604,18 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
     
     mtx_unlock(&framebuffet->mutex);
     
-    if (res < 0) {
-        FBLOG_WARN("failed to store configuration \"%s\" in map (error: %d)", key, res);
-        fbcollections_map_free_map_and_payloads(copied_config);
-        return FBERROR_UNSPECIFIC;
-    }
-
     if (previous_config) {
         FBLOG_TRACE("framebuffet_set_configuration freeing previous configuration \"%s\", %p", key, previous_config);
         fbcollections_map_free_map_and_payloads(previous_config);
     }
     
+    if (res < 0) {
+        FBLOG_WARN("failed to store configuration \"%s\" in map (error: %d)", key, res);
+        fbcollections_map_free_map_and_payloads(copied_config);
+        free(key);
+        return FBERROR_UNSPECIFIC;
+    }
+
     return FBERROR_NONE;
 }
 
