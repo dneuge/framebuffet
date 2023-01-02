@@ -25,7 +25,7 @@
 // TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h src/fbutil.h | sha256sum
 
 static framebuffet_dll_shim_t _framebuffet_dll_shim = {
-    ._shim_hash = "64fb30489418615ac27cb76544721f262ac5256b6e9d7432dd5407f53032873d",
+    ._shim_hash = "a2efb12e785f274b1797ce9217f8940b9090a0a1b33c52721d52e4dd16c64093",
     ._shim_loaded = 0,
     0
 };
@@ -37,6 +37,7 @@ static void link_shim(framebuffet_dll_shim_t *runtime) {
     _framebuffet_dll_shim.framebuffet_get_source_name_reference = runtime->framebuffet_get_source_name_reference;
     
     _framebuffet_dll_shim.framebuffet_get_source_instance = runtime->framebuffet_get_source_instance;
+    _framebuffet_dll_shim.framebuffet_release_source_instance = runtime->framebuffet_release_source_instance;
     _framebuffet_dll_shim.framebuffet_get_num_buffers = runtime->framebuffet_get_num_buffers;
     _framebuffet_dll_shim.framebuffet_get_buffer_configuration = runtime->framebuffet_get_buffer_configuration;
     _framebuffet_dll_shim.framebuffet_copy_latest_frame = runtime->framebuffet_copy_latest_frame;
@@ -64,6 +65,7 @@ static int check_shim_complete(framebuffet_dll_shim_t *shim) {
     if (!shim->framebuffet_get_source_name_reference) return 0;
     
     if (!shim->framebuffet_get_source_instance) return 0;
+    if (!shim->framebuffet_release_source_instance) return 0;
     if (!shim->framebuffet_get_num_buffers) return 0;
     if (!shim->framebuffet_get_buffer_configuration) return 0;
     if (!shim->framebuffet_copy_latest_frame) return 0;
@@ -157,6 +159,11 @@ char* framebuffet_get_source_name_reference(void *instance_ref) {
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
     return _framebuffet_dll_shim.framebuffet_get_source_instance(framebuffet, instance_name);
+}
+
+int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.framebuffet_release_source_instance(source_instance);
 }
 
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance) {

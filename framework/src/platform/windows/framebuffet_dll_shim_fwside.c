@@ -3,7 +3,7 @@
 // TODO: auto-generate; see framebuffet_dll_shim.c as well
 
 static const framebuffet_dll_shim_t _framebuffet_dll_shim_fwside = {
-    ._shim_hash = "64fb30489418615ac27cb76544721f262ac5256b6e9d7432dd5407f53032873d",
+    ._shim_hash = "a2efb12e785f274b1797ce9217f8940b9090a0a1b33c52721d52e4dd16c64093",
     ._shim_loaded = 0,
     
     .framebuffet_publish_num_buffers = framebuffet_publish_num_buffers,
@@ -12,6 +12,7 @@ static const framebuffet_dll_shim_t _framebuffet_dll_shim_fwside = {
     .framebuffet_get_source_name_reference = framebuffet_get_source_name_reference,
     
     .framebuffet_get_source_instance = framebuffet_get_source_instance,
+    .framebuffet_release_source_instance = framebuffet_release_source_instance,
     .framebuffet_get_num_buffers = framebuffet_get_num_buffers,
     .framebuffet_get_buffer_configuration = framebuffet_get_buffer_configuration,
     .framebuffet_copy_latest_frame = framebuffet_copy_latest_frame,

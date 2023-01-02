@@ -13,6 +13,7 @@ typedef char* (*framebuffet_get_source_name_reference_f)(void *instance_ref);
 
 // general API from framebuffet.h
 typedef fbsource_module_instance_entry_t* (*framebuffet_get_source_instance_f)(framebuffet_t* framebuffet, char *instance_name);
+typedef int (*framebuffet_release_source_instance_f)(fbsource_module_instance_entry_t *source_instance);
 typedef int (*framebuffet_get_num_buffers_f)(fbsource_module_instance_entry_t *source_instance);
 typedef int (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
 typedef int (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
@@ -36,6 +37,7 @@ typedef struct {
     framebuffet_get_source_name_reference_f framebuffet_get_source_name_reference;
     
     framebuffet_get_source_instance_f framebuffet_get_source_instance;
+    framebuffet_release_source_instance_f framebuffet_release_source_instance;
     framebuffet_get_num_buffers_f framebuffet_get_num_buffers;
     framebuffet_get_buffer_configuration_f framebuffet_get_buffer_configuration;
     framebuffet_copy_latest_frame_f framebuffet_copy_latest_frame;
