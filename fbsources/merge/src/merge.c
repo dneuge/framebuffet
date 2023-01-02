@@ -168,6 +168,8 @@ static inline fbsource_merge_area_t* get_area_pointer(fbsource_merge_t *instance
 }
 
 static bool source_reset(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+    bool success = TRUE;
+    
     if (mtx_lock(&source->mutex) != thrd_success) {
         FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to lock mutex before clearing state", source->name, source->buffer_id);
         return FALSE;
@@ -185,9 +187,28 @@ static bool source_reset(fbsource_merge_t *instance, fbsource_merge_source_t *so
         source->buffer = NULL;
     }
 
+    if (source->source_instance) {
+        int res = framebuffet_release_source_instance(source->source_instance);
+        if (res == FBERROR_NONE) {
+            source->source_instance = NULL;
+        } else if (res == FBERROR_DESTRUCTION_PENDING) {
+            // we can still continue to forget the instance if destruction is pending but should warn and abort
+            // because it means we somehow ended up with a mismatch in usage counts
+            // (destruction should have been prevented while source was still in use)
+            FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to release source instance (error %d) because it is pending destruction already, continuing", source->name, source->buffer_id, res);
+            source->source_instance = NULL;
+            success = FALSE;
+        } else {
+            // something else went wrong, we should keep the instance assigned so we can potentially
+            // retry to release it
+            FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to release source instance (error %d)", source->name, source->buffer_id, res);
+            success = FALSE;
+        }
+    }
+
     mtx_unlock(&source->mutex);
 
-    return TRUE;
+    return FALSE;
 }
 
 static void source_wait_for_update(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
@@ -376,6 +397,9 @@ static int source_run(void *data) {
 
     if (!source_reset(instance, source)) {
         FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to clear state on thread shutdown", source->name, source->buffer_id);
+        if (source->source_instance) {
+            FBLOG_ERROR(instance->ext_instance_ref, "[source %s #%d] Source instance could not be released (final attempt). The source instance will probably not be able to be removed from Frame Buffet, causing further errors.", source->name, source->buffer_id);
+        }
     }
     
     FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] worker thread terminated", source->name, source->buffer_id);
