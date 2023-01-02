@@ -1094,6 +1094,7 @@ int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source
         FBLOG_WARN("framebuffet_release_source_instance: instance destruction is already pending; usage should already have been discontinued before this call (late check)");
         out_error = FBERROR_DESTRUCTION_PENDING;
     } else if (source_instance->num_users > 0) {
+        FBLOG_DEBUG("framebuffet_release_source_instance decrementing users of \"%s\", was %d", source_instance->instance_name, source_instance->num_users);
         source_instance->num_users--;
     } else {
         FBLOG_WARN("framebuffet_release_source_instance: source \"%s\" has been released more often than used, resetting number of users from %d to 0", source_instance->instance_name, source_instance->num_users);
