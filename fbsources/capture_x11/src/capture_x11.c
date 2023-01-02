@@ -41,6 +41,7 @@ typedef struct {
     Display *display;
     char *display_name;
     char *window_search_name_exact;
+    bool allow_shm;
     
     unsigned int width;
     unsigned int height;
@@ -305,7 +306,7 @@ static int generate(void *data) {
     
     Window root_window = DefaultRootWindow(instance->display);
 
-    bool use_shm = TRUE; // TODO: set based on server support
+    bool use_shm = instance->allow_shm; // TODO: set based on server support
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
@@ -749,6 +750,15 @@ static int get_config_int(fbsource_capture_x11_t *instance, char *key, int defau
     return atoi(value);
 }
 
+static bool get_config_boolean(fbsource_capture_x11_t *instance, char *key, bool default_value) {
+    char *value = get_config_pointer(instance, key);
+    if (!value) {
+        return default_value;
+    }
+
+    return !strcmp(value, "true");
+}
+
 static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *config) {
     fbsource_capture_x11_t *instance = data;
 
@@ -790,6 +800,8 @@ static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *c
         FBLOG_WARN(instance->ext_instance_ref, "window.search.name.exact has to be set");
         success = FALSE;
     }
+
+    instance->allow_shm = get_config_boolean(instance, "allowSHM", TRUE);
 
     // connect to X server
     if (success) {
