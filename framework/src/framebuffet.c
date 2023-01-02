@@ -1409,24 +1409,24 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     fbcollections_map_entry_t *instance_entry = fbcollections_map_find_key(framebuffet->sources, instance_name, instance_name_size);
     if (instance_entry && instance_entry->value) {
         instance = instance_entry->value;
-    }
 
-    if (instance->destruction_pending) { // early check without instance mutex
-        FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (early check)", instance_name);
-        instance = NULL;
-    } else {
-        if (mtx_lock(&instance->mutex) != thrd_success) {
-            FBLOG_WARN("failed to lock instance mutex for user increment, not returning instance");
+        if (instance->destruction_pending) { // early check without instance mutex
+            FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (early check)", instance_name);
             instance = NULL;
         } else {
-            if (instance->destruction_pending) { // late check with instance mutex
-                FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (late check)", instance_name);
+            if (mtx_lock(&instance->mutex) != thrd_success) {
+                FBLOG_WARN("failed to lock instance mutex for user increment, not returning instance");
                 instance = NULL;
             } else {
-                FBLOG_DEBUG("framebuffet_get_source_instance incrementing users of \"%s\", was %d", instance_name, instance->num_users);
-                instance->num_users++;
+                if (instance->destruction_pending) { // late check with instance mutex
+                    FBLOG_DEBUG("pending destruction of \"%s\", not returning instance (late check)", instance_name);
+                    instance = NULL;
+                } else {
+                    FBLOG_DEBUG("framebuffet_get_source_instance incrementing users of \"%s\", was %d", instance_name, instance->num_users);
+                    instance->num_users++;
+                }
+                mtx_unlock(&instance->mutex);
             }
-            mtx_unlock(&instance->mutex);
         }
     }
 
