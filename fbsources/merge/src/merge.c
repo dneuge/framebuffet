@@ -224,7 +224,7 @@ static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source
     // kept local for search; only stored on struct if everything is ready for processing
     fbsource_module_instance_entry_t *source_instance = NULL;
     fbsource_buffer_config_t source_buffer_config;
-    char *buffer = NULL;
+    unsigned char *buffer = NULL;
     
     int res;
 
