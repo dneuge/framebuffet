@@ -52,6 +52,7 @@ static int generate(void *data) {
     fbsource_crop_t *instance = data;
     fbsource_module_instance_entry_t *source_instance = NULL;
     fbsource_buffer_config_t source_buffer_config;
+    bool found_instance = FALSE;
 
     unsigned int min_source_width = instance->x + instance->width;
     unsigned int min_source_height = instance->y + instance->height;
@@ -72,6 +73,7 @@ static int generate(void *data) {
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // source may not be immediately available, wait until it has been created
+        found_instance = FALSE;
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching source instance \"%s\"", instance->source_name);
             source_instance = framebuffet_get_source_instance(instance->framebuffet, instance->source_name);
@@ -92,20 +94,27 @@ static int generate(void *data) {
                         bool has_required_dimensions = (source_width >= min_source_width && source_height >= min_source_height);
                         if (has_required_dimensions) {
                             FBLOG_DEBUG(instance->ext_instance_ref, "found source buffer with required dimensions");
+                            found_instance = TRUE;
                             break;
                         }
 
                         FBLOG_DEBUG(instance->ext_instance_ref, "source buffer is too small");
                     }
                 }
+
+                res = framebuffet_release_source_instance(source_instance);
+                if (res != FBERROR_NONE) {
+                    FBLOG_WARN(instance->ext_instance_ref, "failed to release source instance \"%s\" while searching (error %d), aborting", instance->source_name, res);
+                    break;
+                }
+                source_instance = NULL;
             }
             
             FBLOG_TRACE(instance->ext_instance_ref, "source instance has not been found yet, waiting...");
-            source_instance = NULL;
             thrd_sleep(&wait_for_source, NULL);
         }
 
-        if (!source_instance) {
+        if (!found_instance) {
             // configuration loop aborted without completing
             // this should only happen when the thread should terminate, so abort as well
             FBLOG_DEBUG(instance->ext_instance_ref, "search loop aborted, terminating");
@@ -183,21 +192,51 @@ static int generate(void *data) {
             framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
         }
 
-        // if we got here we are shutting down or reinitializing and need to release the source buffer
+        // if we got here we are shutting down or reinitializing
+
+        // no need to clean up twice in case we are terminating anyway
+        if (instance->stop_generator) {
+            break;
+        }
+        
         if (source_buffer) {
             FBLOG_DEBUG(instance->ext_instance_ref, "releasing source buffer for reinitialization");
             free(source_buffer);
             source_buffer = NULL;
         }
+
+        if (source_instance) {
+            res = framebuffet_release_source_instance(source_instance);
+            if (res != FBERROR_NONE) {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to release source instance \"%s\" for reinitialization (error %d), aborting", instance->source_name, res);
+                break;
+            }
+            source_instance = NULL;
+        }
     }
 
-    // release any remaining memory we hold
+    // release any remaining resources we hold
     if (source_buffer) {
         FBLOG_DEBUG(instance->ext_instance_ref, "releasing source buffer for termination");
         free(source_buffer);
     }
 
+    if (source_instance) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "releasing source instance for termination");
+        res = framebuffet_release_source_instance(source_instance);
+        source_instance = NULL;
+        if (res == FBERROR_NONE) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "source instance released");
+        } else if (res == FBERROR_DESTRUCTION_PENDING) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to release source instance \"%s\" for termination (error %d) because it is pending destruction already", instance->source_name, res);
+        } else {
+            FBLOG_ERROR(instance->ext_instance_ref, "Failed to release source instance \"%s\" for termination (error %d) but destruction is not pending. The source instance will probably not be able to be removed from Frame Buffet, causing further errors.", instance->source_name, res);
+        }
+    }
+    
     FBLOG_INFO(instance->ext_instance_ref, "source worker thread terminated");
+
+    return FBERROR_NONE;
 }
 
 static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
