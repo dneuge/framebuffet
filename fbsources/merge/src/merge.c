@@ -169,7 +169,7 @@ static inline fbsource_merge_area_t* get_area_pointer(fbsource_merge_t *instance
 
 static bool source_reset(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
     if (mtx_lock(&source->mutex) != thrd_success) {
-        FBLOG_WARN("[source %s #%d] failed to lock mutex before clearing state", source->name, source->buffer_id);
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to lock mutex before clearing state", source->name, source->buffer_id);
         return FALSE;
     }
         
@@ -235,7 +235,7 @@ static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source
 
     // clear any previous state
     if (!source_reset(instance, source)) {
-        FBLOG_WARN("[source %s #%d] failed to clear state before reconfiguration; terminating...", source->name, source->buffer_id);
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to clear state before reconfiguration; terminating...", source->name, source->buffer_id);
         return FALSE;
     }
         
@@ -288,7 +288,7 @@ static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source
 
     // transfer to struct
     if (mtx_lock(&source->mutex) != thrd_success) {
-        FBLOG_WARN("[source %s #%d] failed to lock mutex before activating source", source->name, source->buffer_id);
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to lock mutex before activating source", source->name, source->buffer_id);
     }
         
     source->got_token = FALSE;
@@ -375,7 +375,7 @@ static int source_run(void *data) {
     FBLOG_DEBUG(instance->ext_instance_ref, "[source %s #%d] shutting down", source->name, source->buffer_id);
 
     if (!source_reset(instance, source)) {
-        FBLOG_WARN("[source %s #%d] failed to clear state on thread shutdown", source->name, source->buffer_id);
+        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to clear state on thread shutdown", source->name, source->buffer_id);
     }
     
     FBLOG_INFO(instance->ext_instance_ref, "[source %s #%d] worker thread terminated", source->name, source->buffer_id);
