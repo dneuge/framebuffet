@@ -510,11 +510,11 @@ static int generate(void *data) {
 
                     // reduce source area as needed to fit in source frame bounds
                     // TODO: calculate on source reconfiguration
-                    if (area->src_x + wanted_width >= source->width) {
+                    if (area->src_x + wanted_width >= (int) source->width) {
                         wanted_width = source->width - area->src_x;
                     }
                     
-                    if (area->src_y + wanted_height >= source->height) {
+                    if (area->src_y + wanted_height >= (int) source->height) {
                         wanted_height = source->height - area->src_y;
                     }
 
@@ -966,7 +966,7 @@ static int num_uint_digits(unsigned int x) {
 
 static bool build_area_config_key(char *buffer, size_t buffer_size, unsigned int area_id, char *sub_key) {
     size_t expected_length = 8 + num_uint_digits(area_id) + strlen(sub_key);
-    if (snprintf(buffer, buffer_size, "areas[%d].%s", area_id, sub_key) != expected_length) {
+    if ((size_t) snprintf(buffer, buffer_size, "areas[%d].%s", area_id, sub_key) != expected_length) {
         buffer[0] = 0;
         return FALSE;
     }
