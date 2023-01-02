@@ -208,7 +208,7 @@ static bool source_reset(fbsource_merge_t *instance, fbsource_merge_source_t *so
 
     mtx_unlock(&source->mutex);
 
-    return FALSE;
+    return success;
 }
 
 static void source_wait_for_update(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
