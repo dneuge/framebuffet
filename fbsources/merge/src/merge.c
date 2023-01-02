@@ -254,14 +254,14 @@ static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source
     // clear reconfiguration request
     source->reconfigure = FALSE;
 
-    // clear any previous state
-    if (!source_reset(instance, source)) {
-        FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to clear state before reconfiguration; terminating...", source->name, source->buffer_id);
-        return FALSE;
-    }
-        
     // source may not be immediately available, wait until it has been created
     while (!instance->stop_generator) {
+        // clear any previous state
+        if (!source_reset(instance, source)) {
+            FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to clear state before reconfiguration; terminating...", source->name, source->buffer_id);
+            break;
+        }
+        
         FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] searching source instance", source->name, source->buffer_id);
         source_instance = framebuffet_get_source_instance(instance->framebuffet, source->name);
         if (source_instance) {
@@ -286,7 +286,18 @@ static bool source_reconfigure(fbsource_merge_t *instance, fbsource_merge_source
         }
             
         FBLOG_TRACE(instance->ext_instance_ref, "[source %s #%d] source instance has not been found yet, waiting...", source->name, source->buffer_id);
-        source_instance = NULL;
+        if (source_instance) {
+            int res = framebuffet_release_source_instance(source_instance);
+            source_instance = NULL;
+            if (res != FBERROR_NONE) {
+                if (res == FBERROR_DESTRUCTION_PENDING) {
+                    FBLOG_WARN(instance->ext_instance_ref, "[source %s #%d] failed to release source during search (error %d) because destruction is pending, aborting", source->name, source->buffer_id, res);
+                } else {
+                    FBLOG_ERROR(instance->ext_instance_ref, "[source %s #%d] Failed to release source during search (error %d), aborting. The source instance will probably not be able to be removed from Frame Buffet, causing further errors.", source->name, source->buffer_id, res);
+                }
+                break;
+            }
+        }
         thrd_sleep(&sleep_for_source, NULL);
     }
 
