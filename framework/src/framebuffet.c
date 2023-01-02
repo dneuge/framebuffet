@@ -1076,7 +1076,8 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     return FBERROR_NONE;
 }
 
-int framebuffet_release_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance) {
+int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
+    framebuffet_t *framebuffet = source_instance->framebuffet;
     int out_error = FBERROR_NONE;
     
     if (source_instance->destruction_pending) {
@@ -1866,7 +1867,7 @@ static int perform_json_action_create_source_instance(framebuffet_t *framebuffet
     }
 
     if (source_instance) {
-        int err2 = framebuffet_release_source_instance(framebuffet, source_instance);
+        int err2 = framebuffet_release_source_instance(source_instance);
         if (err2 != FBERROR_NONE) {
             FBLOG_WARN("configure_from_json_action_create_configuration failed to release source instance \"%s\" after creation", json_source_name->valuestring);
         }
