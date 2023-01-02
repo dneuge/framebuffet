@@ -171,7 +171,7 @@ static int generate(void *data) {
             // crop from source to target buffer
             unsigned char *destination = buffer;
             unsigned char *source = source_start;
-            for (int y=0; y<instance->height; y++) {
+            for (unsigned int y=0; y<instance->height; y++) {
                 memcpy(destination, source, line_copy_count);
                 source += source_line_bytes;
                 destination += line_copy_count;
