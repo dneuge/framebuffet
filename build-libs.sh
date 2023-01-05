@@ -12,6 +12,10 @@ function die {
     exit 1
 }
 
+function cd_real_path {
+    cd "$(realpath -e "$1")" || die "Failed to change into real path of $1"
+}
+
 source ./_build_target.sh || die "Failed to include build target script"
 
 [[ -d lib/_build ]] && rm -Rf lib/_build
@@ -27,7 +31,7 @@ if [[ "${BUILD_TARGET}" != "windows" ]]; then
     echo "==== Skipping Mesa (only C11 compatibility) ===="
 else
     echo "==== Building Mesa (only C11 compatibility) ===="
-    cd "${script_dir}/lib/mesa/_c11_only"
+    cd_real_path "${script_dir}/lib/mesa/_c11_only"
     [[ -d build ]] && (rm -Rf build || die "Mesa (only C11 compatibility) clean failed")
     mkdir build || die "Mesa (only C11 compatibility) mkdir failed"
     cd build
@@ -65,7 +69,7 @@ echo "==== Building cJSON ===="
 # if they are not set, cJSON's symbols will override all other symbols in a statically linked DLL,
 # regardless of other linker options used to link the including module, so cJSON's symbol export
 # unfortunately has to be disabled here (MinGW 10.3.0)
-cd "${script_dir}/lib/cjson"
+cd_real_path "${script_dir}/lib/cjson"
 [[ -d build ]] && (rm -Rf build || die "cJSON clean failed")
 mkdir build || die "cJSON mkdir failed"
 cd build
@@ -82,7 +86,7 @@ cp -a ../cJSON.h "${script_dir}/lib/_build/" || die "cJSON copy failed (3)"
 echo
 
 echo "==== Building zlib ===="
-cd "${script_dir}/lib/zlib"
+cd_real_path "${script_dir}/lib/zlib"
 [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
 mkdir build || die "zlib mkdir failed"
 cd build
@@ -95,7 +99,7 @@ cp -a ../zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (4)"
 echo
 
 echo "==== Building LZO ===="
-cd "${script_dir}/lib/lzo"
+cd_real_path "${script_dir}/lib/lzo"
 [[ -d build ]] && (rm -Rf build || die "lzo clean failed")
 mkdir build || die "lzo mkdir failed"
 cd build
@@ -108,7 +112,7 @@ cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (
 echo
 
 echo "==== Building libjpeg-turbo ===="
-cd "${script_dir}/lib/libjpeg-turbo"
+cd_real_path "${script_dir}/lib/libjpeg-turbo"
 [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
 mkdir build || die "libjpeg-turbo mkdir failed"
 cd build
@@ -123,7 +127,7 @@ cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
 echo
 
 function build_libvncclient {
-    cd "${script_dir}/lib/VNC"
+    cd_real_path "${script_dir}/lib/VNC"
     [[ -d build ]] && (rm -Rf build || die "VNC clean failed")
     mkdir build || die "VNC mkdir failed"
     cd build
