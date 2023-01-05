@@ -14,7 +14,7 @@ The framework is in early development. The API is *not stable* yet and may chang
 
 ## How to build
 
-Builds are currently only supported for Linux on Linux. Cross-compilation support for Windows will be added shortly.
+Builds are currently only supported on Linux, with cross-compilation support from Linux for Windows.
 
 There are currently no plans for Mac builds as the target platform is unavailable to the developer(s). If you would like to volunteer for taking care of maintaining and testing Mac builds please contact the project.
 
@@ -24,7 +24,7 @@ Building is currently only supported from a Linux environment. If you're not on 
 
 A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
 
-Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below.
+Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below. In addition, X11 dependencies need to be globally available on the build environment.
 
 ### Build scripts
 
