@@ -18,7 +18,11 @@ function cd_real_path {
 
 source ./_build_target.sh || die "Failed to include build target script"
 
-[[ -d lib/_build ]] && rm -Rf lib/_build
+if [[ "${FBBUILDLIBS_KEEP_BUILD:-0}" == "1" ]]; then
+    echo "Frame Buffet build-libs: keep build target directory"
+else
+    [[ -d lib/_build ]] && rm -Rf lib/_build
+fi
 mkdir -p lib/_build
 
 num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
