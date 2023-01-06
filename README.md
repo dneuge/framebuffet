@@ -37,6 +37,15 @@ To build the plugin execute the following scripts in sequence, as needed:
 
 You may also find [`do_all.sh`](do_all.sh) useful which runs all these commands in sequence.
 
+#### Environment variables
+
+The build scripts support some optional environment variables:
+
+| Script | Variable | Effect |
+| ------ | -------- | ------ |
+| `fetch-libs.sh` | `FBFETCHLIBS_DOWNLOAD_ONLY=1` | files will only be downloaded, not extracted (useful for CI cache updates) |
+| `build-libs.sh` | `FBBUILDLIBS_KEEP_BUILD=1` | dependency build target directory `lib/_build` will not be deleted (useful for inclusion to other projects) |
+
 ## How to develop
 
 Frame buffer source modules are separate dynamically linkable libraries (.so/.dll). Please refer to [`fbsources`](fbsources) for the modules currently included in this repository. 
