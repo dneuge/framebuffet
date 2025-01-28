@@ -13,7 +13,7 @@ Before contributing code for inclusion to the main repository, please make sure 
   - significant portions of code should not be verbatim copies from forums/knowledge databases such as StackOverflow
   - when basing a contribution off documentation or other (online) sources, make sure to abide by the terms of use set by those sources
     - documentation published by Microsoft on learn.microsoft.com is highly problematic; see the section below on how to work with it
-  - AI bots must not have been involved in any part of authoring your contribution because the original sources involved in AI training and thus their authors and license conditions are untraceable, bearing a high risk of copyright/license violation
+  - AI must not have been involved in any part of authoring your contribution because the original sources involved in AI training and thus their authors and license conditions are untraceable, bearing a high risk of copyright/license violation
 - all commits are made under your full real name (no aliases, no short names) and with a working email address
 - you understand and agree to be listed with that information permanently, unrevokable, as a contributor to the project in the source repository and, at least for larger contributions, accompanying documentation
 - you understand that such information will be copied and archived permanently in uncontrollable ways due to the nature of services used to collaborate on the project, as well as source code repositories and open communication on the Internet in general
