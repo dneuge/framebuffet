@@ -2,6 +2,9 @@
 .#*
 *~
 .*.kate-swp
+.idea
+
+cmake-build-debug
 
 *.old
 *.bak
