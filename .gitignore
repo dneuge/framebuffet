@@ -9,6 +9,8 @@
 *.nocommit
 *.nocommit.*
 
+heaptrack.*
+
 build
 lib/*
 !lib/CMakeModules
