@@ -1392,7 +1392,7 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     FBLOG_TRACE("framebuffet_get_source_instance instance_name=\"%s\", size=%lu", instance_name, instance_name_size);
 
     if (framebuffet->destruction_pending) {
-        FBLOG_WARN("framework is pending construction; sources cannot be leased any more (early check)");
+        FBLOG_WARN("framework is pending destruction; sources cannot be leased any more (early check)");
         return NULL;
     }
     
@@ -1402,7 +1402,7 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     }
     
     if (framebuffet->destruction_pending) {
-        FBLOG_WARN("framework is pending construction; sources cannot be leased any more (late check)");
+        FBLOG_WARN("framework is pending destruction; sources cannot be leased any more (late check)");
         mtx_unlock(&framebuffet->mutex);
         return NULL;
     }
