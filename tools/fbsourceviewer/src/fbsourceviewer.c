@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
         printf("no source named %s", source_id);
         return 1;
     }
-
+  
     printf("querying FB config for buffer %d", buffer_id);
     fbsource_buffer_config_t fb_config;
     while (1) {
@@ -261,10 +261,33 @@ int main(int argc, char *argv[]) {
         frames_received++;
     }
 
+    printf("destroying window\n");
+    SDL_DestroyWindow(window);
+
+    printf("shutting down FrameBuffet\n");
+    if (source) {
+      	printf("viewer releases source instance\n");
+        res = framebuffet_release_source_instance(source);
+        source = NULL;
+        if (res == FBERROR_NONE) {
+      		printf("viewer source instance released\n");
+        } else {
+      		printf("viewer source instance failed to release: %d\n", res);
+        }
+    }
+    int num_sources_destroyed = 0;
+    uint8_t module_destructor_failed = 0;
+    res = framebuffet_destroy_retrying(framebuffet, &num_sources_destroyed, 30, 1000, &module_destructor_failed);
+    if (res != FBERROR_NONE) {
+    	printf("FrameBuffet failed to terminate: %d\n", res);
+    }
+    if (module_destructor_failed != 0) {
+      	printf("Number of failed FrameBuffet module destructors: %hu\n", module_destructor_failed);
+    }
+
     printf("done\n");
     free(buffer);
 
-    SDL_DestroyWindow(window);
     SDL_Quit();
 
     mtx_destroy(&log_mutex);
