@@ -49,14 +49,14 @@ static void sleep_millis(int milliseconds) {
     thrd_sleep(&(struct timespec){.tv_nsec=(milliseconds * 1000000)}, NULL);
 }
 
-static const char* log_level_name(fblog_level_t level) {
+static const char* log_level_tag(fblog_level_t level) {
     switch (level) {
-        case FBLOG_LEVEL_ERROR: return "ERROR";
-        case FBLOG_LEVEL_WARN:  return "WARN";
-        case FBLOG_LEVEL_INFO:  return "INFO";
-        case FBLOG_LEVEL_DEBUG: return "DEBUG";
-        case FBLOG_LEVEL_TRACE: return "TRACE";
-        default:                return "UNKNOWN";
+        case FBLOG_LEVEL_ERROR: return "[ERROR]";
+        case FBLOG_LEVEL_WARN:  return "[WARN] ";
+        case FBLOG_LEVEL_INFO:  return "[INFO] ";
+        case FBLOG_LEVEL_DEBUG: return "[DEBUG]";
+        case FBLOG_LEVEL_TRACE: return "[TRACE]";
+        default:                return "[???]  ";
     }
 }
 
@@ -79,7 +79,7 @@ static void log_msg(char *message, ...) {
 
 static void log_receiver(fblog_level_t level, char *message) {
     char buffer[LOG_BUFFER_SIZE] = { 0 };
-    if (!snprintf(buffer, LOG_BUFFER_SIZE, "[FrameBuffet] [%s] %s", log_level_name(level), message)) {
+    if (!snprintf(buffer, LOG_BUFFER_SIZE, "[FrameBuffet] %s %s", log_level_tag(level), message)) {
         log_msg("dropped FrameBuffet log message");
         return;
     }
