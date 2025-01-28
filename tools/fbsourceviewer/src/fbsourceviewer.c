@@ -117,13 +117,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /*
-    res = framebuffet_load_configuration(config_path);
+    res = framebuffet_configure_from_actions_json_file(framebuffet, config_path);
     if (res != FBERROR_NONE) {
         printf("error loading config %s: %d", config_path, res);
         return 1;
     }
-    */
 
     printf("source ID: %s\n", source_id);
     printf("buffer ID: %d\n", buffer_id);
@@ -131,6 +129,7 @@ int main(int argc, char *argv[]) {
     int width = 2048;
     int height = 2048;
 
+    /*
     printf("instantiating source module\n");
     fbsource_module_instance_entry_t *source;
     res = framebuffet_create_source_instance(framebuffet, &source, "Dummy", "myDummy");
@@ -153,7 +152,14 @@ int main(int argc, char *argv[]) {
 
     printf("freeing config map\n");
     fbcollections_map_free_map_and_payloads(config);
-  
+    */
+
+    fbsource_module_instance_entry_t *source = framebuffet_get_source_instance(framebuffet, source_id);
+    if (!source) {
+        printf("no source named %s", source_id);
+        return 1;
+    }
+
     printf("querying FB config for buffer %d", buffer_id);
     fbsource_buffer_config_t fb_config;
     while (1) {
