@@ -163,7 +163,7 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
 }
 
 fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
-    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_release_source_instance(source_instance);
 }
 
