@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,10 +18,6 @@
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
-
-typedef short bool;
-#define FALSE 0
-#define TRUE 1
 
 #define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR 1
 #define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR 1
@@ -87,7 +84,7 @@ static bool find_window(fbsource_capture_x11_t *instance, Window window, Window 
     Window *children;
     unsigned int num_children;
     Status status;
-    bool found = FALSE;
+    bool found = false;
 
     // check current window name
     char *X_window_name = NULL;
@@ -102,7 +99,7 @@ static bool find_window(fbsource_capture_x11_t *instance, Window window, Window 
 
     if (found) {
         *matched_window = window;
-        return TRUE;
+        return true;
     }
 
     // recurse to check all child windows
@@ -115,7 +112,7 @@ static bool find_window(fbsource_capture_x11_t *instance, Window window, Window 
     if (children) {
         for (unsigned int i=0; i<num_children; i++) {
             if (find_window(instance, children[i], matched_window, exact_name)) {
-                found = TRUE;
+                found = true;
                 break;
             }
         }
@@ -137,13 +134,13 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
     if (instance->redirected_window) {
         FBLOG_TRACE(instance->ext_instance_ref, "generator_reset: unredirect window");
         XCompositeUnredirectWindow(instance->display, instance->window, CompositeRedirectAutomatic);
-        instance->redirected_window = FALSE;
+        instance->redirected_window = false;
         FBLOG_TRACE(instance->ext_instance_ref, "generator_reset: unredirect window complete");
     }
 
     if (mtx_lock(&instance->mutex) != thrd_success) {
         FBLOG_WARN(instance->ext_instance_ref, "failed to lock mutex before %s; resources will not be cleaned up", reason);
-        return FALSE;
+        return false;
     }
     FBLOG_TRACE(instance->ext_instance_ref, "generator_reset: locked mutex");
         
@@ -169,22 +166,22 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
 
     FBLOG_DEBUG(instance->ext_instance_ref, "reset for %s complete", reason);
 
-    return TRUE;
+    return true;
 }
 
 static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
     int res;
-    bool success = TRUE;
+    bool success = true;
     
     FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=0x%lx, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
 
     if (success && instance->shm_attached_xserver) {
         FBLOG_DEBUG(instance->ext_instance_ref, "detaching X server from SHM");
         if (XShmDetach(instance->display, &instance->shm_info)) {
-            instance->shm_attached_xserver = FALSE;
+            instance->shm_attached_xserver = false;
         } else {
             FBLOG_WARN(instance->ext_instance_ref, "XShmDetach failed");
-            success = FALSE;
+            success = false;
         }
     }
     
@@ -198,14 +195,14 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
         FBLOG_DEBUG(instance->ext_instance_ref, "detaching from SHM segment");
         res = shmdt(instance->shm_info.shmaddr);
         if (res == 0) {
-            instance->shm_attached_self = FALSE;
+            instance->shm_attached_self = false;
             instance->shm_info.shmaddr = NULL;
         } else if (res == -1) {
             FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment failed (errno %d)", errno);
-            success = FALSE;
+            success = false;
         } else {
             FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment returned undefined result (%d), assuming failed", res);
-            success = FALSE;
+            success = false;
         }
     }
 
@@ -213,13 +210,13 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
         FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment");
         res = shmctl(instance->shm_info.shmid, IPC_RMID, NULL);
         if (res == 0) {
-            instance->shm_assigned = FALSE;
+            instance->shm_assigned = false;
         } else if (res == -1) {
             FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment failed (errno %d)", errno);
-            success = FALSE;
+            success = false;
         } else {
             FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment returned undefined result (%d), assuming failed", res);
-            success = FALSE;
+            success = false;
         }
     }
 
@@ -259,7 +256,7 @@ static void wait_for_events(fbsource_capture_x11_t *instance) {
         
         // select returns -1 on error, 0 on timeout, positive integer = total count of descriptors
         if (res < 0) {
-            success = FALSE;
+            success = false;
             
             // expected errors in errno according to documentation are:
             //
@@ -294,11 +291,11 @@ static int generate(void *data) {
     int res;
 
     bool success;
-    bool processed_image = FALSE;
+    bool processed_image = false;
     XWindowAttributes attrs;
     XEvent event;
     Damage damage;
-    bool use_damage = TRUE;
+    bool use_damage = true;
     int damage_event_base;
     int damage_error_base;
     int damage_version_major;
@@ -316,15 +313,15 @@ static int generate(void *data) {
     
     if (!XDamageQueryExtension(instance->display, &damage_event_base, &damage_error_base)) {
         FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryExtension failed, disabling");
-        use_damage = FALSE;
+        use_damage = false;
     } else {
         status = XDamageQueryVersion(instance->display, &damage_version_major, &damage_version_minor);
         if (!status) {
             FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryVersion failed, disabling (status: %d)", status);
-            use_damage = FALSE;
+            use_damage = false;
         } else if ((damage_version_major < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_version_major == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_version_minor < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
             FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
-            use_damage = FALSE;
+            use_damage = false;
         } else if ((damage_version_major != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_version_minor != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
             FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
         }
@@ -339,33 +336,33 @@ static int generate(void *data) {
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
-        success = FALSE;
-        processed_image = FALSE;
+        success = false;
+        processed_image = false;
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching window");
             if (find_window(instance, root_window, &instance->window, instance->window_search_name_exact)) {
                 FBLOG_DEBUG(instance->ext_instance_ref, "window found: 0x%lx", instance->window);
-                success = TRUE;
+                success = true;
 
                 status = XGetWindowAttributes(instance->display, instance->window, &attrs);
                 if (!status) {
                     FBLOG_WARN(instance->ext_instance_ref, "XGetWindowAttributes failed for window 0x%lx", instance->window);
-                    success = FALSE;
+                    success = false;
                 } else {
                     // check window attributes
                     if (attrs.depth != 24) {
                         FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", attrs.depth, instance->window);
-                        success = FALSE;
+                        success = false;
                     }
 
                     if (attrs.width < 1) {
                         FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", attrs.width, instance->window);
-                        success = FALSE;
+                        success = false;
                     }
 
                     if (attrs.height < 1) {
                         FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", attrs.height, instance->window);
-                        success = FALSE;
+                        success = false;
                     }
                 }
             }
@@ -415,7 +412,7 @@ static int generate(void *data) {
 
         // window needs to be redirected to off-screen buffer to be fully accessible if not visible
         XCompositeRedirectWindow(instance->display, instance->window, CompositeRedirectAutomatic);
-        instance->redirected_window = TRUE;
+        instance->redirected_window = true;
 
         // create SHM XImage structure
         if (use_shm) {
@@ -423,7 +420,7 @@ static int generate(void *data) {
             instance->X_image = XShmCreateImage(instance->display, attrs.visual, attrs.depth, format, NULL, &instance->shm_info, attrs.width, attrs.height);
             if (!instance->X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "XShmCreateImage failed, disabling SHM support");
-                use_shm = FALSE;
+                use_shm = false;
             }
         }
 
@@ -431,10 +428,10 @@ static int generate(void *data) {
         if (use_shm) {
             instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->bytes_per_line * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
             if (instance->shm_info.shmid != -1) {
-                instance->shm_assigned = TRUE;
+                instance->shm_assigned = true;
             } else {
                 FBLOG_WARN(instance->ext_instance_ref, "shmget failed (errno %d), disabling SHM support", errno);
-                use_shm = FALSE;
+                use_shm = false;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
@@ -445,14 +442,14 @@ static int generate(void *data) {
         if (use_shm) {
             void *shm_addr = shmat(instance->shm_info.shmid, NULL, 0);
             if (shm_addr && (shm_addr != (void*)-1)) {
-                instance->shm_attached_self = TRUE;
+                instance->shm_attached_self = true;
                 instance->X_image->data = shm_addr;
                 instance->shm_info.shmaddr = shm_addr;
                 instance->shm_info.readOnly = False;
             } else {
                 // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
                 FBLOG_WARN(instance->ext_instance_ref, "shmat failed (errno %d), disabling SHM support", errno);
-                use_shm = FALSE;
+                use_shm = false;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
@@ -463,10 +460,10 @@ static int generate(void *data) {
         if (use_shm) {
             status = XShmAttach(instance->display, &instance->shm_info);
             if (status) {
-                instance->shm_attached_xserver = TRUE;
+                instance->shm_attached_xserver = true;
             } else {
                 FBLOG_WARN(instance->ext_instance_ref, "XShmAttach failed (status %d), disabling SHM support", status);
-                use_shm = FALSE;
+                use_shm = false;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
@@ -485,10 +482,10 @@ static int generate(void *data) {
             damage = XDamageCreate(instance->display, instance->window, XDamageReportNonEmpty);
         }
 
-        bool update_available = TRUE;
+        bool update_available = true;
         while (!instance->stop_generator) {
             if (!use_damage || update_available) {
-                update_available = FALSE;
+                update_available = false;
                 
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
@@ -557,11 +554,11 @@ static int generate(void *data) {
 
                 FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
 
-                processed_image = TRUE;
+                processed_image = true;
             }
             
             // process events
-            bool size_changed = FALSE;
+            bool size_changed = false;
             while (XPending(instance->display) > 0) {
                 XNextEvent(instance->display, &event);
 
@@ -570,14 +567,14 @@ static int generate(void *data) {
                     if (e->drawable == instance->window) {
                         FBLOG_TRACE(instance->ext_instance_ref, "XDamage indicates update");
                         XDamageSubtract(instance->display, e->damage, None, None);
-                        update_available = TRUE;
+                        update_available = true;
                         continue;
                     }
                 } else if (event.type == ConfigureNotify) {
                     XConfigureEvent *e = (XConfigureEvent*) &event;
                     if ((e->window == instance->window) && ((e->width != attrs.width) || (e->height != attrs.height))) {
                         FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs.width, attrs.height, e->width, e->height);
-                        size_changed = TRUE;
+                        size_changed = true;
                         continue;
                     }
                 }
@@ -669,13 +666,13 @@ static int stop_generator_thread(fbsource_capture_x11_t *instance) {
         return FBERROR_NONE;
     }
   
-    instance->stop_generator = TRUE;
+    instance->stop_generator = true;
     int thread_res;
     if (thrd_join(instance->generator_thread, &thread_res) != thrd_success) {
         // TODO: what else can be done if joining the thread fails?
         out_error = FBERROR_UNSPECIFIC;
     }
-    instance->has_generator_thread = FALSE;
+    instance->has_generator_thread = false;
 
     return out_error;
 }
@@ -793,15 +790,15 @@ static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *c
         instance->window_search_name_exact = NULL;
     }
     
-    bool success = TRUE;
+    bool success = true;
     
     instance->window_search_name_exact = copy_string(get_config_pointer(instance, "window.search.name.exact"));
     if (!instance->window_search_name_exact || strlen(instance->window_search_name_exact) == 0) {
         FBLOG_WARN(instance->ext_instance_ref, "window.search.name.exact has to be set");
-        success = FALSE;
+        success = false;
     }
 
-    instance->allow_shm = get_config_boolean(instance, "allowSHM", TRUE);
+    instance->allow_shm = get_config_boolean(instance, "allowSHM", true);
 
     // connect to X server
     if (success) {
@@ -809,7 +806,7 @@ static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *c
         instance->display = XOpenDisplay(instance->display_name);
         if (!instance->display) {
             FBLOG_WARN(instance->ext_instance_ref, "connection to X server display failed (%s)", instance->display_name ? instance->display_name : "default");
-            success = FALSE;
+            success = false;
         }
     }
 
@@ -824,10 +821,10 @@ static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *c
     mtx_unlock(&instance->mutex);
     
     if (success) {
-        instance->stop_generator = FALSE;
+        instance->stop_generator = false;
 
         if (thrd_create(&instance->generator_thread, generate, instance) == thrd_success) {
-            instance->has_generator_thread = TRUE;
+            instance->has_generator_thread = true;
         } else {
             return FBERROR_UNSPECIFIC;
         }
@@ -900,11 +897,11 @@ static int capture_x11_copy_latest_frame(void *data, unsigned char *destination,
     return out_error;
 }
 
-static int capture_x11_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
+static bool capture_x11_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     fbsource_capture_x11_t *instance = data;
     
     if (buffer_id != 0 || instance->buffer_size <= 0) {
-        return FALSE;
+        return false;
     }
   
     return (last_token != instance->frame_token);

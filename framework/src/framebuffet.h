@@ -2,6 +2,7 @@
 #define FRAMEBUFFET_H
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifndef NEED_C11_THREADS_WRAPPER
@@ -162,7 +163,7 @@ typedef struct {
 
     fblog_receiver_f log_receiver;
     fblog_level_t minimum_log_level;
-    uint8_t destruction_pending;
+    bool destruction_pending;
 } framebuffet_t;
 
 typedef struct {
@@ -289,9 +290,9 @@ typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destinati
  * @param data module instance data as set on creation
  * @param buffer_id buffer to be copied, counting from 0
  * @param last_token token last received from copy operation
- * @return non-zero if an updated frame is available, zero if not
+ * @return true if an updated frame is available, false if not
  */
-typedef int (*fbsource_has_update_f)(void *data, int buffer_id, fbsource_token_t last_token);
+typedef bool (*fbsource_has_update_f)(void *data, int buffer_id, fbsource_token_t last_token);
 
 #define FRAMEBUFFET_MODULE_API_VERSION 1
 
@@ -352,7 +353,7 @@ typedef struct {
 
 typedef struct {
     // always lock the mutex and back off if destruction_pending
-    uint8_t destruction_pending;
+    bool destruction_pending;
 
     fbsource_token_t token;
     mtx_t mutex;
@@ -372,7 +373,7 @@ typedef struct {
     fbsource_module_instance_frame_update_t *frame_updates;
     int num_buffers;
     int num_users;
-    uint8_t destruction_pending;
+    bool destruction_pending;
 } fbsource_module_instance_entry_t;
 
 #ifdef __cplusplus
@@ -421,7 +422,7 @@ int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *sourc
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance);
 int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
 int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
-int framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
+bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 int framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 

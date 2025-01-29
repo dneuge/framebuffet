@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -399,18 +400,18 @@ static int client_loop(void *data) {
         // in "connected" state run libvnc's event processing
         if (instance->actual_connection_state == VNC_STATE_CONNECTED) {
             //FBLOG_TRACE(instance->ext_instance_ref, "client loop processes VNC events");
-            need_reset = FALSE;
+            need_reset = false;
             res = WaitForMessage(client, VNC_WAIT_TIMEOUT_MICROSECONDS);
             if (res < 0) {
                 // something went wrong
                 FBLOG_WARN(instance->ext_instance_ref, "WaitForMessage failed");
-                need_reset = TRUE;
+                need_reset = true;
             } else if (res) {
                 // we got a message to process
                 if (!HandleRFBServerMessage(client)) {
                     // something else went wrong
                     FBLOG_WARN(instance->ext_instance_ref, "HandleRFBServerMessage failed");
-                    need_reset = TRUE;
+                    need_reset = true;
                 }
             }
 
@@ -795,9 +796,9 @@ static int fblibvnc_copy_latest_frame(void *data, unsigned char *destination, un
     return out_error;
 }
 
-static int fblibvnc_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
+static bool fblibvnc_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     if (buffer_id != 0) {
-        return FALSE;
+        return false;
     }
   
     fbsource_libvnc_t *instance = data;

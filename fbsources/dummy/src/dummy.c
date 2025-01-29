@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,10 +12,6 @@
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
-
-typedef short bool;
-#define FALSE 0
-#define TRUE 1
 
 typedef struct {
     mtx_t mutex;
@@ -147,13 +144,13 @@ static int stop_generator_thread(fbsource_dummy_t *instance) {
         return FBERROR_NONE;
     }
   
-    instance->stop_generator = TRUE;
+    instance->stop_generator = true;
     int thread_res;
     if (thrd_join(instance->generator_thread, &thread_res) != thrd_success) {
         // TODO: what else can be done if joining the thread fails?
         out_error = FBERROR_UNSPECIFIC;
     }
-    instance->has_generator_thread = FALSE;
+    instance->has_generator_thread = false;
 
     return out_error;
 }
@@ -255,10 +252,10 @@ static int dummy_configure_module(void *data, fbcollections_map_entry_t *config)
     mtx_unlock(&instance->mutex); // TODO: handle mtx_unlock error
 
     if (success) {
-        instance->stop_generator = FALSE;
+        instance->stop_generator = false;
 
         if (thrd_create(&instance->generator_thread, generate, instance) == thrd_success) {
-            instance->has_generator_thread = TRUE;
+            instance->has_generator_thread = true;
         } else {
             return FBERROR_UNSPECIFIC;
         }
@@ -329,9 +326,9 @@ static int dummy_copy_latest_frame(void *data, unsigned char *destination, unsig
     return out_error;
 }
 
-static int dummy_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
+static bool dummy_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     if (buffer_id != 0) {
-        return FALSE;
+        return false;
     }
   
     fbsource_dummy_t *instance = data;

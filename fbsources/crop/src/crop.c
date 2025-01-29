@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,10 +12,6 @@
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
-
-typedef short bool;
-#define FALSE 0
-#define TRUE 1
 
 typedef struct {
     mtx_t mutex;
@@ -52,11 +49,11 @@ static int generate(void *data) {
     fbsource_crop_t *instance = data;
     fbsource_module_instance_entry_t *source_instance = NULL;
     fbsource_buffer_config_t source_buffer_config;
-    bool found_instance = FALSE;
+    bool found_instance = false;
 
     unsigned int min_source_width = instance->x + instance->width;
     unsigned int min_source_height = instance->y + instance->height;
-    bool got_source_token = FALSE;
+    bool got_source_token = false;
     fbsource_token_t source_token = 0;
 
     unsigned char *source_buffer = NULL;
@@ -73,7 +70,7 @@ static int generate(void *data) {
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // source may not be immediately available, wait until it has been created
-        found_instance = FALSE;
+        found_instance = false;
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching source instance \"%s\"", instance->source_name);
             source_instance = framebuffet_get_source_instance(instance->framebuffet, instance->source_name);
@@ -94,7 +91,7 @@ static int generate(void *data) {
                         bool has_required_dimensions = (source_width >= min_source_width && source_height >= min_source_height);
                         if (has_required_dimensions) {
                             FBLOG_DEBUG(instance->ext_instance_ref, "found source buffer with required dimensions");
-                            found_instance = TRUE;
+                            found_instance = true;
                             break;
                         }
 
@@ -131,7 +128,7 @@ static int generate(void *data) {
         FBLOG_INFO(instance->ext_instance_ref, "source acquired, starting frame updates");
 
         memset(source_buffer, 0, source_buffer_size);
-        got_source_token = FALSE;
+        got_source_token = false;
 
         // calculate where we need to start copying from and how many bytes to skip between lines
         unsigned char *source_start = source_buffer + (instance->y * source_width * 3) + (instance->x * 3);
@@ -166,7 +163,7 @@ static int generate(void *data) {
                 break;
             }
             
-            got_source_token = TRUE;
+            got_source_token = true;
 
             // crop from source to target buffer
             unsigned char *destination = buffer;
@@ -269,13 +266,13 @@ static int stop_generator_thread(fbsource_crop_t *instance) {
         return FBERROR_NONE;
     }
   
-    instance->stop_generator = TRUE;
+    instance->stop_generator = true;
     int thread_res;
     if (thrd_join(instance->generator_thread, &thread_res) != thrd_success) {
         // TODO: what else can be done if joining the thread fails?
         out_error = FBERROR_UNSPECIFIC;
     }
-    instance->has_generator_thread = FALSE;
+    instance->has_generator_thread = false;
 
     return out_error;
 }
@@ -417,10 +414,10 @@ static int crop_configure_module(void *data, fbcollections_map_entry_t *config) 
     mtx_unlock(&instance->mutex); // TODO: handle mtx_unlock error
 
     if (success) {
-        instance->stop_generator = FALSE;
+        instance->stop_generator = false;
 
         if (thrd_create(&instance->generator_thread, generate, instance) == thrd_success) {
-            instance->has_generator_thread = TRUE;
+            instance->has_generator_thread = true;
         } else {
             return FBERROR_UNSPECIFIC;
         }
@@ -493,9 +490,9 @@ static int crop_copy_latest_frame(void *data, unsigned char *destination, unsign
     return out_error;
 }
 
-static int crop_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
+static bool crop_has_update(void *data, int buffer_id, fbsource_token_t last_token) {
     if (buffer_id != 0) {
-        return FALSE;
+        return false;
     }
   
     fbsource_crop_t *instance = data;

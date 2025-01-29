@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -280,7 +281,7 @@ framebuffet_t* framebuffet_init() {
     out->configurations = fbcollections_map_create();
     out->sources = fbcollections_map_create();
 
-    int success = (out->modules != NULL) && (out->configurations != NULL) && (out->sources != NULL);
+    bool success = (out->modules != NULL) && (out->configurations != NULL) && (out->sources != NULL);
     if (success) {
         return out;
     }
@@ -452,7 +453,7 @@ int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed) 
 }
 
 int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed) {
-    uint8_t complete = 0;
+    bool complete = false;
 
     if (module_destructor_failed) {
         *module_destructor_failed = 0;
@@ -479,7 +480,7 @@ int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_de
 
         if (err == FBERROR_NONE) {
             // we are done
-            complete = 1;
+            complete = true;
             break;
         } else if (err == FBERROR_MODULE_DESTRUCTOR_FAILED) {
             // notify about that error
@@ -1284,9 +1285,9 @@ int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int 
     char *instance_name = NULL;
 
     int err = FBERROR_NONE;
-    uint8_t abort = 0;
-    uint8_t found_in_use = 0;
-    uint8_t found_destruction_pending = 0;
+    bool abort = false;
+    bool found_in_use = false;
+    bool found_destruction_pending = false;
 
     // for-loop only limits the maximum number of traverals
     for (int i=0; i<FB_DESTROY_MAX_TRAVERSALS; i++) {
@@ -1328,7 +1329,7 @@ int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int 
         instance_name = NULL;
         if (instance->num_users > 0) {
             // remember that we saw at least one module still being in use
-            found_in_use = 1;
+            found_in_use = true;
         } else {
             instance_name = copy_string(instance->instance_name);
             if (!instance_name) {
@@ -1347,16 +1348,16 @@ int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int 
             
             if (err == FBERROR_IN_USE) {
                 FBLOG_DEBUG("instance \"%s\" turned out to actually still be in use, continuing", instance_name);
-                found_in_use = 1;
+                found_in_use = true;
             } else if (err == FBERROR_DESTRUCTION_PENDING) {
                 FBLOG_DEBUG("unused instance \"%s\" is already being destroyed, continuing", instance_name);
-                found_destruction_pending = 1;
+                found_destruction_pending = true;
             } else if (err == FBERROR_NONE) {
                 FBLOG_DEBUG("unused instance \"%s\" has been successfully destroyed, continuing", instance_name);
                 *num_destroyed = (*num_destroyed) + 1;
             } else {
                 FBLOG_WARN("unused instance \"%s\" could not be destroyed (error: %d), aborting", err);
-                abort = 1;
+                abort = true;
             }
             
             free(instance_name);
@@ -1456,7 +1457,7 @@ int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_insta
     return source_instance->module->module->copy_latest_frame(source_instance->data, destination, buffer_size, buffer_id, token);
 }
 
-int framebuffet_has_update(fbsource_module_instance_entry_t* source_instance, int buffer_id, fbsource_token_t last_token) {
+bool framebuffet_has_update(fbsource_module_instance_entry_t* source_instance, int buffer_id, fbsource_token_t last_token) {
     return source_instance->module->module->has_update(source_instance->data, buffer_id, last_token);
 }
 
@@ -1658,15 +1659,15 @@ static int check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
         return err;
     }
 
-    int is_min_major_revision = (config_version.major == supported_min_framebuffet_config_version.major);
-    int is_older_min_major_revision = (config_version.major < supported_min_framebuffet_config_version.major);
-    int is_older_min_minor_revision = is_min_major_revision && (config_version.minor < supported_min_framebuffet_config_version.minor);
-    int is_older_min_revision = is_older_min_major_revision || is_older_min_minor_revision;
+    bool is_min_major_revision = (config_version.major == supported_min_framebuffet_config_version.major);
+    bool is_older_min_major_revision = (config_version.major < supported_min_framebuffet_config_version.major);
+    bool is_older_min_minor_revision = is_min_major_revision && (config_version.minor < supported_min_framebuffet_config_version.minor);
+    bool is_older_min_revision = is_older_min_major_revision || is_older_min_minor_revision;
 
-    int is_later_max_major_revision = config_version.major > supported_max_framebuffet_config_version.major;
+    bool is_later_max_major_revision = config_version.major > supported_max_framebuffet_config_version.major;
     
-    int is_max_major_revision = config_version.major == supported_max_framebuffet_config_version.major;
-    int is_later_max_minor_revision = is_max_major_revision && (config_version.minor > supported_max_framebuffet_config_version.minor);
+    bool is_max_major_revision = config_version.major == supported_max_framebuffet_config_version.major;
+    bool is_later_max_minor_revision = is_max_major_revision && (config_version.minor > supported_max_framebuffet_config_version.minor);
     
     if (is_older_min_revision) {
         FBLOG_WARN("actions JSON version %d.%d is older than the minimum supported version %d.%d; this version of Frame Buffet is too recent to load the configuration", config_version.major, config_version.minor, supported_min_framebuffet_config_version.major, supported_min_framebuffet_config_version.minor);
