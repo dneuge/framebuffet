@@ -179,28 +179,32 @@ echo "==== Building libvncclient (statically linked) ===="
 build_libvncclient OFF
 echo
 
-echo "==== Building xcb-proto ===="
-cd_real_path "${script_dir}/lib/xcb-proto"
-[[ -e Makefile ]] && (make clean || die "xcb-proto make clean failed")
-[[ -d build ]] && (rm -Rf build || die "xcb-proto rm clean failed")
-mkdir build || die "xcb-proto mkdir failed"
-./configure --prefix="$(realpath build)" || die "xcb-proto configure failed"
-make || die "xcb-proto make failed"
-make install || die "xcb-proto make install failed"
+if [[ "${BUILD_TARGET}" != "linux" ]]; then
+    echo "==== Skipping xcb/xcb-proto (Linux only) ===="
+else
+    echo "==== Building xcb/xcb-proto (Linux) ===="
+    echo "=== Building xcb-proto ==="
+    cd_real_path "${script_dir}/lib/xcb-proto"
+    [[ -e Makefile ]] && (make clean || die "xcb-proto make clean failed")
+    [[ -d build ]] && (rm -Rf build || die "xcb-proto rm clean failed")
+    mkdir build || die "xcb-proto mkdir failed"
+    ./configure --prefix="$(realpath build)" || die "xcb-proto configure failed"
+    make || die "xcb-proto make failed"
+    make install || die "xcb-proto make install failed"
 
-echo "==== Building xcb ===="
-cd_real_path "${script_dir}/lib/xcb"
-[[ -e Makefile ]] && (make clean || die "xcb make clean failed")
-[[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
-mkdir build || die "xcb mkdir failed"
-./configure --prefix="$(realpath build)" || die "xcb configure failed"
-make -j$num_jobs || die "xcb make failed"
-make install || die "xcb make install failed"
-cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb copy failed (1)"
-mkdir -p "${script_dir}/lib/_build/xcb"
-cp -a build/include/xcb/* "${script_dir}/lib/_build/xcb/" || die "xcb copy failed (2)"
-echo
-
+    echo "=== Building xcb ==="
+    cd_real_path "${script_dir}/lib/xcb"
+    [[ -e Makefile ]] && (make clean || die "xcb make clean failed")
+    [[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
+    mkdir build || die "xcb mkdir failed"
+    ./configure --prefix="$(realpath build)" || die "xcb configure failed"
+    make -j$num_jobs || die "xcb make failed"
+    make install || die "xcb make install failed"
+    cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb copy failed (1)"
+    mkdir -p "${script_dir}/lib/_build/xcb"
+    cp -a build/include/xcb/* "${script_dir}/lib/_build/xcb/" || die "xcb copy failed (2)"
+    echo
+fi
 
 
 echo Lib build complete.
