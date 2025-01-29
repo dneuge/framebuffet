@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "framebuffet_dll_shim.h"
@@ -56,8 +57,8 @@ static void clear_shim() {
     link_shim((framebuffet_dll_shim_t*) &zero_shim);
 }
 
-static int check_shim_complete(framebuffet_dll_shim_t *shim) {
-    if (!shim) return 0;
+static bool check_shim_complete(framebuffet_dll_shim_t *shim) {
+    if (!shim) return false;
     
     if (!shim->framebuffet_publish_num_buffers) return 0;
     if (!shim->framebuffet_publish_update) return 0;
@@ -77,7 +78,7 @@ static int check_shim_complete(framebuffet_dll_shim_t *shim) {
 
     if (!shim->fbutil_set_current_thread_name_va) return 0;
 
-    return 1;
+    return true;
 }
 
 int _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime) {
