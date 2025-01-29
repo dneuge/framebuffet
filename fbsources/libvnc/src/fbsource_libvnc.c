@@ -91,7 +91,7 @@ static const struct timespec failed_connection_delay = {
     .tv_nsec = 0
 };
 
-static int set_wanted_connection_state(fbsource_libvnc_t *instance, vnc_state_t state) {
+static fberror_t set_wanted_connection_state(fbsource_libvnc_t *instance, vnc_state_t state) {
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
     }
@@ -561,7 +561,7 @@ static void rfb_log_error(const char *format, ...) {
     va_end(args);    
 }
 
-static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+static fberror_t fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     // libvncclient only has a single global logger configuration but we need to log instance-based
     // we use thread-local storage to store a reference only visible to the thread actually running
     // the client
@@ -627,9 +627,9 @@ static int fblibvnc_create(framebuffet_t *framebuffet, void *instance_ref, void 
     return FBERROR_NONE;
 }
 
-static int fblibvnc_destroy(void *data) {
+static fberror_t fblibvnc_destroy(void *data) {
     fbsource_libvnc_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
   
     if (instance == NULL) {
         return FBERROR_NONE;
@@ -681,7 +681,7 @@ static int get_config_int(fbsource_libvnc_t *instance, char *key, int default_va
     return atoi(value);
 }
 
-static int fblibvnc_configure_module(void *data, fbcollections_map_entry_t *config) {
+static fberror_t fblibvnc_configure_module(void *data, fbcollections_map_entry_t *config) {
     fbsource_libvnc_t *instance = data;
 
     if (mtx_lock(&instance->mutex) != thrd_success) {
@@ -720,7 +720,7 @@ static int fblibvnc_configure_module(void *data, fbcollections_map_entry_t *conf
         return set_wanted_connection_state(instance, VNC_STATE_CONNECTED);
     } else {
         FBLOG_DEBUG(instance->ext_instance_ref, "config failed");
-        int err = set_wanted_connection_state(instance, VNC_STATE_DISCONNECTED);
+        fberror_t err = set_wanted_connection_state(instance, VNC_STATE_DISCONNECTED);
         if (err != FBERROR_NONE) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to update wanted connection state to 'disconnected' after configuration failure (error: %d)", err);
         }
@@ -734,13 +734,13 @@ static int fblibvnc_get_num_buffers(void *data) {
     return instance->buffer_size ? 1 : 0;
 }
 
-static int fblibvnc_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+static fberror_t fblibvnc_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
     fbsource_libvnc_t *instance = data;
     *config = fbcollections_map_copy_with_payloads(instance->source_config);
     return FBERROR_NONE;
 }
 
-static int fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+static fberror_t fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_libvnc_t *instance = data;
 
     if (!buffer_config) {
@@ -770,9 +770,9 @@ static int fblibvnc_get_buffer_configuration(void *data, int buffer_id, fbsource
     return FBERROR_NONE;
 }
 
-static int fblibvnc_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t fblibvnc_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_libvnc_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
   
     if (buffer_id != 0 && !instance->buffer_size) {
         return FBERROR_NO_SUCH_BUFFER;

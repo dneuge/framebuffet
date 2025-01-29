@@ -2,7 +2,7 @@
 
 // FIXME: make this a proper module (requires framework to be split up)
 
-static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
+static fberror_t load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
     *module_descriptor = NULL;
 
     //void *lib = dlopen(file_path, RTLD_LOCAL | RTLD_LAZY);

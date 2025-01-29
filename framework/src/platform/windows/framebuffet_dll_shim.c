@@ -81,7 +81,7 @@ static bool check_shim_complete(framebuffet_dll_shim_t *shim) {
     return true;
 }
 
-int _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime) {
+fberror_t _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime) {
     if (!runtime) {
         printf("Frame Buffet DLL shim received NULL pointer from runtime\r\n");
         return FBERROR_UNSPECIFIC;
@@ -130,12 +130,12 @@ void fbcollections_map_free_map_and_payloads(fbcollections_map_entry_t *entry) {
     _framebuffet_dll_shim.fbcollections_map_free_map_and_payloads(entry);
 }
 
-int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
+fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_publish_num_buffers(instance_ref, num_buffers);
 }
 
-int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
+fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_publish_update(instance_ref, buffer_id, token);
 }
@@ -162,7 +162,7 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     return _framebuffet_dll_shim.framebuffet_get_source_instance(framebuffet, instance_name);
 }
 
-int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
+fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
     return _framebuffet_dll_shim.framebuffet_release_source_instance(source_instance);
 }
@@ -172,17 +172,17 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instanc
     return _framebuffet_dll_shim.framebuffet_get_num_buffers(source_instance);
 }
 
-int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_get_buffer_configuration(source_instance, buffer_id, buffer_config);
 }
 
-int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_copy_latest_frame(source_instance, destination, buffer_size, buffer_id, token);
 }
 
-int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
+fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_wait_for_update_micros(source_instance, buffer_id, last_token, microseconds);
 }

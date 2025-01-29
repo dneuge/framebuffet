@@ -752,7 +752,7 @@ static int generate_crop(void *data) {
 }
 */
 
-static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+static fberror_t merge_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     fbsource_merge_t *instance = malloc(sizeof(fbsource_merge_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
@@ -791,10 +791,10 @@ static int merge_create(framebuffet_t *framebuffet, void *instance_ref, void **d
     return FBERROR_NONE;
 }
 
-static int destroy_source_thread(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
+static fberror_t destroy_source_thread(fbsource_merge_t *instance, fbsource_merge_source_t *source) {
     // should not fail on repeated calls, multiple areas can share a single source
     
-    int err = FBERROR_NONE;
+    fberror_t err = FBERROR_NONE;
 
     if (!source->has_thread) {
         FBLOG_DEBUG(instance->ext_instance_ref, "source thread %s #%d is indicated as non-existent, skipping join", source->name, source->buffer_id);
@@ -836,8 +836,8 @@ static int destroy_source_thread(fbsource_merge_t *instance, fbsource_merge_sour
     return err;
 }
 
-static int destroy_source_threads(fbsource_merge_t *instance) {
-    int out_error = FBERROR_NONE;
+static fberror_t destroy_source_threads(fbsource_merge_t *instance) {
+    fberror_t out_error = FBERROR_NONE;
     
     for (int i=0; i<instance->num_areas; i++) {
         fbsource_merge_area_t *area = get_area_pointer(instance, i);
@@ -850,7 +850,7 @@ static int destroy_source_threads(fbsource_merge_t *instance) {
             FBLOG_DEBUG(instance->ext_instance_ref, "source for area %d has already been destroyed", i);
         } else {
             FBLOG_DEBUG(instance->ext_instance_ref, "destroying source at %p for area %d", area->source, i);
-            int err = destroy_source_thread(instance, area->source);
+            fberror_t err = destroy_source_thread(instance, area->source);
             if (err == FBERROR_NONE) {
                 area->source = NULL;
             } else {
@@ -862,8 +862,8 @@ static int destroy_source_threads(fbsource_merge_t *instance) {
     return out_error;
 }
 
-static int destroy_threads(fbsource_merge_t *instance) {
-    int err = FBERROR_NONE;
+static fberror_t destroy_threads(fbsource_merge_t *instance) {
+    fberror_t err = FBERROR_NONE;
   
     if (!instance->has_generator_thread) {
         return FBERROR_NONE;
@@ -889,14 +889,14 @@ static int destroy_threads(fbsource_merge_t *instance) {
     return FBERROR_NONE;
 }
 
-static int merge_destroy(void *data) {
+static fberror_t merge_destroy(void *data) {
     fbsource_merge_t *instance = data;
   
     if (instance == NULL) {
         return FBERROR_NONE;
     }
 
-    int out_error = destroy_threads(instance);
+    fberror_t out_error = destroy_threads(instance);
     if (out_error != FBERROR_NONE) {
         FBLOG_WARN(instance->ext_instance_ref, "failed to destroy threads; resources cannot be freed, processing may not have terminated");
         return FBERROR_UNSPECIFIC;
@@ -1051,15 +1051,15 @@ static void fill_with_color(unsigned char *buffer, fbsource_merge_color_t color,
     }
 }
 
-static int merge_configure_module(void *data, fbcollections_map_entry_t *config) {
+static fberror_t merge_configure_module(void *data, fbcollections_map_entry_t *config) {
     // NOTE: this is not thread-safe because destruction of threads may not have finished by a simultaneous call
     
     fbsource_merge_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
 
     FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
 
-    int err = destroy_threads(instance);
+    fberror_t err = destroy_threads(instance);
     if (err != FBERROR_NONE) {
         FBLOG_WARN(instance->ext_instance_ref, "unable to reconfigure, previous threads could not be destroyed (error %d)", err);
         return err;
@@ -1373,13 +1373,13 @@ static int merge_get_num_buffers(void *data) {
     return 1;
 }
 
-static int merge_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+static fberror_t merge_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
     fbsource_merge_t *instance = data;
     *config = fbcollections_map_copy_with_payloads(instance->source_config);
     return FBERROR_NONE;
 }
 
-static int merge_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+static fberror_t merge_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_merge_t *instance = data;
 
     FBLOG_TRACE(instance->ext_instance_ref, "get_buffer_config buffer_id=%d, buffer_config=%p", buffer_id, buffer_config);
@@ -1410,9 +1410,9 @@ static int merge_get_buffer_configuration(void *data, int buffer_id, fbsource_bu
     return FBERROR_NONE;
 }
 
-static int merge_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t merge_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_merge_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
 
     if (buffer_id != 0) {
         return FBERROR_NO_SUCH_BUFFER;

@@ -236,7 +236,7 @@ static int generate(void *data) {
     return FBERROR_NONE;
 }
 
-static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+static fberror_t crop_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     fbsource_crop_t *instance = malloc(sizeof(fbsource_crop_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
@@ -259,8 +259,8 @@ static int crop_create(framebuffet_t *framebuffet, void *instance_ref, void **da
     return FBERROR_NONE;
 }
 
-static int stop_generator_thread(fbsource_crop_t *instance) {
-    int out_error = FBERROR_NONE;
+static fberror_t stop_generator_thread(fbsource_crop_t *instance) {
+    fberror_t out_error = FBERROR_NONE;
   
     if (!instance->has_generator_thread) {
         return FBERROR_NONE;
@@ -277,14 +277,14 @@ static int stop_generator_thread(fbsource_crop_t *instance) {
     return out_error;
 }
 
-static int crop_destroy(void *data) {
+static fberror_t crop_destroy(void *data) {
     fbsource_crop_t *instance = data;
   
     if (instance == NULL) {
         return FBERROR_NONE;
     }
 
-    int out_error = stop_generator_thread(instance);
+    fberror_t out_error = stop_generator_thread(instance);
 
     fbcollections_map_free_map_and_payloads(instance->source_config);
 
@@ -344,7 +344,7 @@ static int get_config_int(fbsource_crop_t *instance, char *key, int default_valu
     return atoi(value);
 }
 
-static int crop_configure_module(void *data, fbcollections_map_entry_t *config) {
+static fberror_t crop_configure_module(void *data, fbcollections_map_entry_t *config) {
     fbsource_crop_t *instance = data;
 
     FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
@@ -431,13 +431,13 @@ static int crop_get_num_buffers(void *data) {
     return 1;
 }
 
-static int crop_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+static fberror_t crop_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
     fbsource_crop_t *instance = data;
     *config = fbcollections_map_copy_with_payloads(instance->source_config);
     return FBERROR_NONE;
 }
 
-static int crop_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+static fberror_t crop_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_crop_t *instance = data;
 
     if (!buffer_config) {
@@ -464,9 +464,9 @@ static int crop_get_buffer_configuration(void *data, int buffer_id, fbsource_buf
     return FBERROR_NONE;
 }
 
-static int crop_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t crop_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_crop_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
   
     if (buffer_id != 0) {
         return FBERROR_NO_SUCH_BUFFER;

@@ -5,7 +5,7 @@
 
 // FIXME: make this a proper module (requires framework to be split up)
 
-static int complete_framebuffet_dll_shim(framebuffet_t *framebuffet, _framebuffet_dll_shim_complete_f dll_shim_complete) {
+static fberror_t complete_framebuffet_dll_shim(framebuffet_t *framebuffet, _framebuffet_dll_shim_complete_f dll_shim_complete) {
     framebuffet_dll_shim_t *copy = malloc(sizeof(framebuffet_dll_shim_t));
     if (!copy) {
         FBLOG_WARN("failed to allocate memory for copy of DLL shim map");
@@ -15,7 +15,7 @@ static int complete_framebuffet_dll_shim(framebuffet_t *framebuffet, _framebuffe
     memcpy(copy, &_framebuffet_dll_shim_fwside, sizeof(framebuffet_dll_shim_t));
 
     FBLOG_TRACE("Calling into DLL for shim completion... (Runtime pointer: %p)", copy);
-    int err = dll_shim_complete(copy);
+    fberror_t err = dll_shim_complete(copy);
     FBLOG_TRACE("DLL shim completion finished with %d", err);
 
     free(copy);
@@ -23,7 +23,7 @@ static int complete_framebuffet_dll_shim(framebuffet_t *framebuffet, _framebuffe
     return err;
 }
 
-static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
+static fberror_t load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path) {
     *module_descriptor = NULL;
 
     HINSTANCE lib = LoadLibrary(file_path);
@@ -50,7 +50,7 @@ static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t 
         return FBERROR_UNSPECIFIC;
     }
 
-    int err = complete_framebuffet_dll_shim(framebuffet, dll_shim_complete);
+    fberror_t err = complete_framebuffet_dll_shim(framebuffet, dll_shim_complete);
     if (err != FBERROR_NONE) {
         FBLOG_WARN("DLL shim could not be completed (error %d) for %s (runtime reverse linking/DI failed)", err, file_path);
         return err;

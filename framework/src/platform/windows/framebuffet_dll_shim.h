@@ -6,18 +6,18 @@
 #define FRAMEBUFFET_DLL_SHIM_HASH_LENGTH 64 /* never decrease, only increase if needed */
 
 // plugin API from framebuffet.h
-typedef int (*framebuffet_publish_num_buffers_f)(void *instance_ref, int num_buffers);
-typedef int (*framebuffet_publish_update_f)(void *instance_ref, int buffer_id, fbsource_token_t token);
+typedef fberror_t (*framebuffet_publish_num_buffers_f)(void *instance_ref, int num_buffers);
+typedef fberror_t (*framebuffet_publish_update_f)(void *instance_ref, int buffer_id, fbsource_token_t token);
 typedef void (*framebuffet_log_va_f)(void *instance_ref, fblog_level_t level, char *format, va_list args);
 typedef char* (*framebuffet_get_source_name_reference_f)(void *instance_ref);
 
 // general API from framebuffet.h
 typedef fbsource_module_instance_entry_t* (*framebuffet_get_source_instance_f)(framebuffet_t* framebuffet, char *instance_name);
-typedef int (*framebuffet_release_source_instance_f)(fbsource_module_instance_entry_t *source_instance);
+typedef fberror_t (*framebuffet_release_source_instance_f)(fbsource_module_instance_entry_t *source_instance);
 typedef int (*framebuffet_get_num_buffers_f)(fbsource_module_instance_entry_t *source_instance);
-typedef int (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
-typedef int (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
-typedef int (*framebuffet_wait_for_update_micros_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
+typedef fberror_t (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
+typedef fberror_t (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+typedef fberror_t (*framebuffet_wait_for_update_micros_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 
 // from fbcollections.h
 typedef fbcollections_map_entry_t* (*fbcollections_map_copy_with_payloads_f)(fbcollections_map_entry_t *entry);

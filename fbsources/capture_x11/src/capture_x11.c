@@ -617,7 +617,7 @@ static int generate(void *data) {
 
     FBLOG_DEBUG(instance->ext_instance_ref, "shutting down worker thread");
     
-    int out_err = instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
+    fberror_t out_err = instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
     
     if (use_shm && !shm_reset(instance, "termination")) {
         FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
@@ -636,7 +636,7 @@ static int generate(void *data) {
     return out_err;
 }
 
-static int capture_x11_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
+static fberror_t capture_x11_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
     fbsource_capture_x11_t *instance = malloc(sizeof(fbsource_capture_x11_t));
     if (instance == NULL) {
         return FBERROR_MEMORY_ALLOCATION;
@@ -659,8 +659,8 @@ static int capture_x11_create(framebuffet_t *framebuffet, void *instance_ref, vo
     return FBERROR_NONE;
 }
 
-static int stop_generator_thread(fbsource_capture_x11_t *instance) {
-    int out_error = FBERROR_NONE;
+static fberror_t stop_generator_thread(fbsource_capture_x11_t *instance) {
+    fberror_t out_error = FBERROR_NONE;
   
     if (!instance->has_generator_thread) {
         return FBERROR_NONE;
@@ -677,14 +677,14 @@ static int stop_generator_thread(fbsource_capture_x11_t *instance) {
     return out_error;
 }
 
-static int capture_x11_destroy(void *data) {
+static fberror_t capture_x11_destroy(void *data) {
     fbsource_capture_x11_t *instance = data;
   
     if (instance == NULL) {
         return FBERROR_NONE;
     }
 
-    int out_error = stop_generator_thread(instance);
+    fberror_t out_error = stop_generator_thread(instance);
 
     fbcollections_map_free_map_and_payloads(instance->source_config);
 
@@ -756,7 +756,7 @@ static bool get_config_boolean(fbsource_capture_x11_t *instance, char *key, bool
     return !strcmp(value, "true");
 }
 
-static int capture_x11_configure_module(void *data, fbcollections_map_entry_t *config) {
+static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entry_t *config) {
     fbsource_capture_x11_t *instance = data;
 
     FBLOG_DEBUG(instance->ext_instance_ref, "module is being (re)configured");
@@ -838,13 +838,13 @@ static int capture_x11_get_num_buffers(void *data) {
     return 1;
 }
 
-static int capture_x11_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
+static fberror_t capture_x11_get_module_configuration(void *data, fbcollections_map_entry_t **config) {
     fbsource_capture_x11_t *instance = data;
     *config = fbcollections_map_copy_with_payloads(instance->source_config);
     return FBERROR_NONE;
 }
 
-static int capture_x11_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+static fberror_t capture_x11_get_buffer_configuration(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     fbsource_capture_x11_t *instance = data;
 
     if (!buffer_config) {
@@ -871,9 +871,9 @@ static int capture_x11_get_buffer_configuration(void *data, int buffer_id, fbsou
     return buffer_config->size > 0 ? FBERROR_NONE : FBERROR_NO_SUCH_BUFFER;
 }
 
-static int capture_x11_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t capture_x11_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_capture_x11_t *instance = data;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
   
     if (buffer_id != 0 || instance->buffer_size <= 0) {
         return FBERROR_NO_SUCH_BUFFER;

@@ -243,7 +243,7 @@ static char* read_file_as_string(framebuffet_t* framebuffet, char *file_path) {
     return buffer;
 }
 
-static int load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path);
+static fberror_t load_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t **module_descriptor, char *file_path);
 
 #include "platform/fbplatform.c"
 
@@ -251,7 +251,7 @@ void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver
     framebuffet->log_receiver = log_receiver;
 }
 
-int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level) {
+fberror_t framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level) {
     int is_valid_level = (level == FBLOG_LEVEL_ERROR) || (level == FBLOG_LEVEL_WARN) || (level == FBLOG_LEVEL_INFO) || (level == FBLOG_LEVEL_DEBUG) || (level == FBLOG_LEVEL_TRACE);
     if (!is_valid_level) {
         return FBERROR_UNSPECIFIC;
@@ -296,8 +296,8 @@ framebuffet_t* framebuffet_init() {
     return NULL;
 }
 
-int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed) {
-    int err;
+fberror_t framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed) {
+    fberror_t err = FBERROR_NONE;
 
     // log on INFO level on first destruction attempt
     if (!framebuffet->destruction_pending) {
@@ -452,7 +452,7 @@ int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed) 
     return FBERROR_NONE;
 }
 
-int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed) {
+fberror_t framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed) {
     bool complete = false;
 
     if (module_destructor_failed) {
@@ -475,7 +475,7 @@ int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_de
     
     for (int attempt=1; attempt<=maximum_attempts; attempt++) {
         int num_sources_destroyed_in_attempt = 0;
-        int err = framebuffet_destroy(framebuffet, &num_sources_destroyed_in_attempt);
+        fberror_t err = framebuffet_destroy(framebuffet, &num_sources_destroyed_in_attempt);
         *num_sources_destroyed = (*num_sources_destroyed) + num_sources_destroyed_in_attempt;
 
         if (err == FBERROR_NONE) {
@@ -515,7 +515,7 @@ static void destroy_frame_update_entry(fbsource_module_instance_frame_update_t *
     cnd_destroy(&frame_update->wait);
 }
 
-static int create_frame_update_entry(fbsource_module_instance_frame_update_t *entry) {
+static fberror_t create_frame_update_entry(fbsource_module_instance_frame_update_t *entry) {
     if (mtx_init(&entry->mutex, mtx_plain) != thrd_success) {
         return FBERROR_UNSPECIFIC;
     }
@@ -534,7 +534,7 @@ static void destroy_frame_update_entries(fbsource_module_instance_frame_update_t
     }
 }
 
-int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
+fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     // FIXME: reconfiguration untested
     
     fbsource_module_instance_entry_t *instance = instance_ref;
@@ -646,7 +646,7 @@ int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     return FBERROR_NONE;
 }
 
-int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
+fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token) {
     fbsource_module_instance_entry_t *instance = instance_ref;
     framebuffet_t *framebuffet = instance->framebuffet;
 
@@ -704,7 +704,7 @@ char* framebuffet_get_source_name_reference(void *instance_ref) {
     return instance->instance_name;
 }
 
-static int apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
+static fberror_t apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor, fbsource_module_registration_t *registration) {
     if (module_descriptor.api_version != FRAMEBUFFET_MODULE_API_VERSION) {
         FBLOG_WARN("module has been compiled with an incompatible API version %d", module_descriptor.api_version);
         return FBERROR_UNSPECIFIC;
@@ -745,12 +745,12 @@ static int apply_module_descriptor(framebuffet_t *framebuffet, fbsource_module_d
     return FBERROR_NONE;
 }
 
-int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
+fberror_t framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
     fbsource_module_descriptor_t *module_descriptor = NULL;
 
     FBLOG_INFO("loading module %s", file_path);
   
-    int err = load_module(framebuffet, &module_descriptor, file_path);
+    fberror_t err = load_module(framebuffet, &module_descriptor, file_path);
     if (err != FBERROR_NONE) {
         return err;
     }
@@ -758,7 +758,7 @@ int framebuffet_load_module(framebuffet_t* framebuffet, char *file_path) {
     return framebuffet_register_module(framebuffet, *module_descriptor);
 }
 
-int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor) {
+fberror_t framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor) {
     if (framebuffet->destruction_pending) {
         FBLOG_WARN("unable to register new modules, framework is pending for destruction (early check)");
         return FBERROR_DESTRUCTION_PENDING;
@@ -781,7 +781,7 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
         return FBERROR_MEMORY_ALLOCATION;
     }
 
-    int err = apply_module_descriptor(framebuffet, module_descriptor, registration);
+    fberror_t err = apply_module_descriptor(framebuffet, module_descriptor, registration);
     if (err != FBERROR_NONE) {
         mtx_unlock(&framebuffet->mutex);
         return err;
@@ -803,7 +803,7 @@ int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_desc
     return FBERROR_NONE;
 }
 
-int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config) {
+fberror_t framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config) {
     if (!config_name) {
         FBLOG_WARN("framebuffet_set_configuration called with null config name");
         return FBERROR_UNSPECIFIC;
@@ -871,7 +871,7 @@ int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name,
     return FBERROR_NONE;
 }
 
-int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config) {
+fberror_t framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config) {
     if (!config_name) {
         FBLOG_WARN("framebuffet_get_configuration called with null config name");
         return FBERROR_UNSPECIFIC;
@@ -883,7 +883,7 @@ int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name,
     }
 
     *config = NULL;
-    int err = FBERROR_NONE;
+    fberror_t err = FBERROR_NONE;
 
     if (mtx_lock(&framebuffet->mutex) != thrd_success) {
         FBLOG_WARN("failed to lock framework mutex to get configuration \"%s\"", config_name);
@@ -905,7 +905,7 @@ int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name,
     return err;
 }
 
-int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
+fberror_t framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name) {
     FBLOG_INFO("instantiating source module \"%s\" as \"%s\"", module_name, instance_name);
   
     // copy instance_name for use as map key
@@ -1037,7 +1037,7 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     // instantiate fbsource
     FBLOG_DEBUG("calling constructor for \"%s\", instance name \"%s\"", module_name, instance_name);
     void *data = NULL;
-    int err = registration->module->_create(framebuffet, (void*) instance, &data);
+    fberror_t err = registration->module->_create(framebuffet, (void*) instance, &data);
     FBLOG_TRACE("constructor call for \"%s\", instance name \"%s\" finished with %d, %p", module_name, instance_name, err, data);
     if (err != FBERROR_NONE) {
         mtx_unlock(&framebuffet->mutex);
@@ -1077,9 +1077,9 @@ int framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsource_modu
     return FBERROR_NONE;
 }
 
-int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
+fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance) {
     framebuffet_t *framebuffet = source_instance->framebuffet;
-    int out_error = FBERROR_NONE;
+    fberror_t out_error = FBERROR_NONE;
     
     if (source_instance->destruction_pending) {
         FBLOG_WARN("framebuffet_release_source_instance: instance destruction is already pending; usage should already have been discontinued before this call (early check)");
@@ -1107,8 +1107,8 @@ int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source
     return out_error;
 }
 
-static int framebuffet_destroy_source_instance_internal(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance) {
-    int out_error = FBERROR_NONE;
+static fberror_t framebuffet_destroy_source_instance_internal(framebuffet_t *framebuffet, fbsource_module_instance_entry_t *source_instance) {
+    fberror_t out_error = FBERROR_NONE;
 
     // start by flagging the instance as pending for destruction if not already flagged by another thread
     if (source_instance->destruction_pending) {
@@ -1187,7 +1187,7 @@ static int framebuffet_destroy_source_instance_internal(framebuffet_t *framebuff
 
     // destroy the module
     FBLOG_DEBUG("call to module \"%s\" to destroy source instance \"%s\"", source_instance->module->name, source_instance->instance_name);
-    int err = source_instance->module->module->_destroy(source_instance->data);
+    fberror_t err = source_instance->module->module->_destroy(source_instance->data);
     if (err != FBERROR_NONE) {
         FBLOG_ERROR("module \"%s\" failed to destroy source instance \"%s\" (error: %d); further behaviour is unspecified - framework keeps module instance record alive as a planned memory leak but whatever might be left running may still crash the application at some point", source_instance->module->name, source_instance->instance_name, err);
         out_error = FBERROR_MODULE_DESTRUCTOR_FAILED;
@@ -1234,8 +1234,8 @@ static int framebuffet_destroy_source_instance_internal(framebuffet_t *framebuff
     return out_error;
 }
 
-int framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name) {
-    int out_error = FBERROR_NONE;
+fberror_t framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name) {
+    fberror_t out_error = FBERROR_NONE;
     fbsource_module_instance_entry_t *instance = NULL;
     
     FBLOG_DEBUG("framebuffet_destroy_source_instance \"%s\"", instance_name);
@@ -1273,7 +1273,7 @@ int framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instan
     return out_error;
 }
 
-int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed) {
+fberror_t framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed) {
     // NOTE: search will back off on first occasion when instance destruction fails with an unexpected error
     
     FBLOG_DEBUG("searching for unused source instances to destroy");
@@ -1284,7 +1284,7 @@ int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int 
     fbcollections_map_entry_t *wanted_entry = NULL;
     char *instance_name = NULL;
 
-    int err = FBERROR_NONE;
+    fberror_t err = FBERROR_NONE;
     bool abort = false;
     bool found_in_use = false;
     bool found_destruction_pending = false;
@@ -1437,11 +1437,11 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     return instance;
 }
 
-int framebuffet_configure_source_instance(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t *config) {
+fberror_t framebuffet_configure_source_instance(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t *config) {
     return source_instance->module->module->configure_module(source_instance->data, config);
 }
 
-int framebuffet_get_source_configuration(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t **config) {
+fberror_t framebuffet_get_source_configuration(fbsource_module_instance_entry_t* source_instance, fbcollections_map_entry_t **config) {
     return source_instance->module->module->get_module_configuration(source_instance->data, config);
 }
 
@@ -1449,11 +1449,11 @@ int framebuffet_get_num_buffers(fbsource_module_instance_entry_t* source_instanc
     return source_instance->module->module->get_num_buffers(source_instance->data);
 }
 
-int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
+fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config) {
     return source_instance->module->module->get_buffer_configuration(source_instance->data, buffer_id, buffer_config);
 }
 
-int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     return source_instance->module->module->copy_latest_frame(source_instance->data, destination, buffer_size, buffer_id, token);
 }
 
@@ -1466,7 +1466,9 @@ static const struct timespec wait_indefinitely = {
     .tv_nsec = 0
 };
 
-static int framebuffet_wait_for_update_internal(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, struct timespec wait_until) {
+static fberror_t framebuffet_wait_for_update_internal(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, struct timespec wait_until) {
+    fberror_t out_err = FBERROR_NONE;
+
     if (source_instance->destruction_pending || source_instance->framebuffet->destruction_pending) {
         return FBERROR_DESTRUCTION_PENDING;
     }
@@ -1528,28 +1530,28 @@ static int framebuffet_wait_for_update_internal(fbsource_module_instance_entry_t
     if (frame_update->destruction_pending) {
         // buffer has stopped to exist and is pending deregistration on framework
         // (this gets triggered from destroy_frame_update_entry)
-        res = FBERROR_NO_SUCH_BUFFER;
+        out_err = FBERROR_NO_SUCH_BUFFER;
     } else if (res == thrd_success) {
         // we were notified about some change, no further check needed
-        res = FBERROR_NONE;
+        out_err = FBERROR_NONE;
     } else if (res == thrd_timedout) {
         // we timed out; without an additional check it is safe to assume there also
         // is no update as none could have been published yet
-        res = FBERROR_NO_FRAME;
+        out_err = FBERROR_NO_FRAME;
     } else {
-        res = FBERROR_UNSPECIFIC;
+        out_err = FBERROR_UNSPECIFIC;
     }
     
     mtx_unlock(&frame_update->mutex);
     
-    return res;
+    return out_err;
 }
 
-int framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token) {
+fberror_t framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token) {
     return framebuffet_wait_for_update_internal(source_instance, buffer_id, last_token, wait_indefinitely);
 }
 
-int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
+fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {
     // FIXME: not fully tested/verified
     
     struct timespec timeout;
@@ -1571,7 +1573,7 @@ int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_
     return framebuffet_wait_for_update_internal(source_instance, buffer_id, last_token, timeout);
 }
 
-static int parse_framebuffet_config_version(framebuffet_t* framebuffet, framebuffet_config_version_t *version, char *s) {
+static fberror_t parse_framebuffet_config_version(framebuffet_t* framebuffet, framebuffet_config_version_t *version, char *s) {
     char verification_buffer[FBCONFIG_VERSION_VERIFICATION_BUFFER_SIZE] = { 0 };
     
     if (!s) {
@@ -1590,7 +1592,7 @@ static int parse_framebuffet_config_version(framebuffet_t* framebuffet, framebuf
         return FBERROR_MEMORY_ALLOCATION;
     }
     
-    int err = FBERROR_UNSPECIFIC;
+    fberror_t err = FBERROR_UNSPECIFIC;
 
     FBLOG_TRACE("parse_framebuffet_config_version \"%s\"", s);
     
@@ -1644,7 +1646,7 @@ static int parse_framebuffet_config_version(framebuffet_t* framebuffet, framebuf
     return err;
 }
 
-static int check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
+static fberror_t check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
     framebuffet_config_version_t config_version;
     
     cJSON *json_config_version = cJSON_GetObjectItemCaseSensitive(json, "_framebuffet_config_version");
@@ -1653,7 +1655,7 @@ static int check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
         return FBERROR_UNSPECIFIC;
     }
 
-    int err = parse_framebuffet_config_version(framebuffet, &config_version, json_config_version->valuestring);
+    fberror_t err = parse_framebuffet_config_version(framebuffet, &config_version, json_config_version->valuestring);
     if (err != FBERROR_NONE) {
         FBLOG_WARN("failed to parse actions configuration format version \"%s\": %d", json_config_version->valuestring, err);
         return err;
@@ -1688,10 +1690,10 @@ static int check_actions_json_version(framebuffet_t *framebuffet, cJSON *json) {
     return FBERROR_NONE;
 }
 
-static int build_configuration_from_json_action(framebuffet_t *framebuffet, fbcollections_map_entry_t **config, cJSON *json_action) {
+static fberror_t build_configuration_from_json_action(framebuffet_t *framebuffet, fbcollections_map_entry_t **config, cJSON *json_action) {
     // shared by set_configuration and create_source_instance
 
-    int err = FBERROR_NONE;
+    fberror_t err = FBERROR_NONE;
 
     *config = NULL;
 
@@ -1788,8 +1790,8 @@ static int build_configuration_from_json_action(framebuffet_t *framebuffet, fbco
     return err;
 }
 
-static int perform_json_action_set_configuration(framebuffet_t *framebuffet, cJSON *json_action) {
-    int err = FBERROR_UNSPECIFIC;
+static fberror_t perform_json_action_set_configuration(framebuffet_t *framebuffet, cJSON *json_action) {
+    fberror_t err = FBERROR_UNSPECIFIC;
     fbcollections_map_entry_t *config = NULL;
     
     cJSON *json_config_name = cJSON_GetObjectItemCaseSensitive(json_action, "name");
@@ -1821,8 +1823,8 @@ static int perform_json_action_set_configuration(framebuffet_t *framebuffet, cJS
     return err;
 }
 
-static int perform_json_action_create_source_instance(framebuffet_t *framebuffet, cJSON *json_action) {
-    int err = FBERROR_UNSPECIFIC;
+static fberror_t perform_json_action_create_source_instance(framebuffet_t *framebuffet, cJSON *json_action) {
+    fberror_t err = FBERROR_UNSPECIFIC;
     fbcollections_map_entry_t *config = NULL;
     
     cJSON *json_source_name = cJSON_GetObjectItemCaseSensitive(json_action, "name");
@@ -1869,7 +1871,7 @@ static int perform_json_action_create_source_instance(framebuffet_t *framebuffet
     }
 
     if (source_instance) {
-        int err2 = framebuffet_release_source_instance(source_instance);
+        fberror_t err2 = framebuffet_release_source_instance(source_instance);
         if (err2 != FBERROR_NONE) {
             FBLOG_WARN("configure_from_json_action_create_configuration failed to release source instance \"%s\" after creation", json_source_name->valuestring);
         }
@@ -1879,7 +1881,7 @@ static int perform_json_action_create_source_instance(framebuffet_t *framebuffet
     return err;
 }
 
-static int perform_json_action(framebuffet_t *framebuffet, char *action_name, cJSON *json_action) {
+static fberror_t perform_json_action(framebuffet_t *framebuffet, char *action_name, cJSON *json_action) {
     if (!strcmp(action_name, "set_configuration")) {
         return perform_json_action_set_configuration(framebuffet, json_action);
     }
@@ -1893,8 +1895,8 @@ static int perform_json_action(framebuffet_t *framebuffet, char *action_name, cJ
     return FBERROR_UNSPECIFIC;
 }
 
-int framebuffet_configure_from_actions_json(framebuffet_t *framebuffet, char *json_string) {
-    int err = FBERROR_UNSPECIFIC;
+fberror_t framebuffet_configure_from_actions_json(framebuffet_t *framebuffet, char *json_string) {
+    fberror_t err = FBERROR_UNSPECIFIC;
     
     cJSON *json = cJSON_Parse(json_string);
     if (!json) {
@@ -1959,7 +1961,7 @@ int framebuffet_configure_from_actions_json(framebuffet_t *framebuffet, char *js
     return err;
 }
 
-int framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path) {
+fberror_t framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path) {
     char *json = read_file_as_string(framebuffet, file_path);
 
     if (!json) {
@@ -1967,7 +1969,7 @@ int framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, cha
         return FBERROR_UNSPECIFIC;
     }
 
-    int err = framebuffet_configure_from_actions_json(framebuffet, json);
+    fberror_t err = framebuffet_configure_from_actions_json(framebuffet, json);
     if (err != FBERROR_NONE) {
         FBLOG_WARN("failed to process actions JSON file \"%s\"", file_path);
     }

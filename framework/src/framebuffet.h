@@ -18,6 +18,8 @@
 #define FBMODULE_LICENSE_MIT "MIT" /* MIT license */
 #define FBMODULE_LICENSE_GPL2 "GPL2" /* suits "GPL 2" and "GPL 2 or later" licenses */
 
+typedef uint8_t fberror_t;
+
 /**
  * @def FBERROR_NONE
  * @brief error code indicating no error has occurred
@@ -186,7 +188,7 @@ typedef int fbsource_token_t;
  * @param data module instance data to be allocated and set by the module as needed, will be provided on further calls addressing this instance; initially NULL
  * @return error code, use FBERROR defines
  */
-typedef int (*fbsource_create_f)(framebuffet_t *framebuffet, void *instance_ref, void **data);
+typedef fberror_t (*fbsource_create_f)(framebuffet_t *framebuffet, void *instance_ref, void **data);
 
 /**
  * Will be called by the framework to shutdown and deallocate a module instance.
@@ -202,7 +204,7 @@ typedef int (*fbsource_create_f)(framebuffet_t *framebuffet, void *instance_ref,
  * @param data module instance data as set on creation
  * @return error code, use FBERROR defines
  */
-typedef int (*fbsource_destroy_f)(void *data);
+typedef fberror_t (*fbsource_destroy_f)(void *data);
 
 /**
  * Configures the module instance. The instance is supposed to be ready to be used
@@ -220,7 +222,7 @@ typedef int (*fbsource_destroy_f)(void *data);
  * @param config configuration data as a map from char* to char* ("strings")
  * @return error code, use FBERROR defines
  */
-typedef int (*fbsource_configure_module_f)(void *data, fbcollections_map_entry_t *config);
+typedef fberror_t (*fbsource_configure_module_f)(void *data, fbcollections_map_entry_t *config);
 
 /**
  * Creates a copy of the current configuration of the module instance.
@@ -238,7 +240,7 @@ typedef int (*fbsource_configure_module_f)(void *data, fbcollections_map_entry_t
  * @param config_entries a NULL terminated array of key-value pairs holding configuration data
  * @return error code, use FBERROR defines
  */
-typedef int (*fbsource_get_module_config_f)(void *data, fbcollections_map_entry_t **config);
+typedef fberror_t (*fbsource_get_module_config_f)(void *data, fbcollections_map_entry_t **config);
 
 /**
  * Returns the number of frame buffers available from the module instance.
@@ -260,7 +262,7 @@ typedef int (*fbsource_get_num_buffers_f)(void *data);
  * @param buffer_config a pointer to the data structure to write the configuration of the queried frame buffer into
  * @return error code, see FBERROR defines
  */
-typedef int (*fbsource_get_buffer_config_f)(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config);
+typedef fberror_t (*fbsource_get_buffer_config_f)(void *data, int buffer_id, fbsource_buffer_config_t *buffer_config);
 
 /**
  * Copies the latest available frame to the specified destination address.
@@ -279,7 +281,7 @@ typedef int (*fbsource_get_buffer_config_f)(void *data, int buffer_id, fbsource_
  * @param token can be used to perform a light-weight check if a new frame is available before invoking this function
  * @return error code, see FBERROR defines
  */
-typedef int (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+typedef fberror_t (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 
 /**
  * Checks if an updated frame is available.
@@ -381,8 +383,8 @@ extern "C" {
 #endif
 
 // API meant only for fbsource modules
-int framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
-int framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
+fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
+fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
 void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
 void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
@@ -391,40 +393,40 @@ char* framebuffet_get_source_name_reference(void *instance_ref); // does not ret
 
 // API meant only for applications; should not be called from modules
 framebuffet_t* framebuffet_init();
-int framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed);
-int framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed);
+fberror_t framebuffet_destroy(framebuffet_t *framebuffet, int *num_sources_destroyed);
+fberror_t framebuffet_destroy_retrying(framebuffet_t *framebuffet, int *num_sources_destroyed, int maximum_attempts, long millis_between_attempts, uint8_t *module_destructor_failed);
 
 void framebuffet_provide_log_receiver(framebuffet_t *framebuffet, fblog_receiver_f log_receiver);
-int framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level);
+fberror_t framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_level_t level);
 
-int framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
-//int framebuffet_load_modules(framebuffet_t* framebuffet, char *directory_path);
+fberror_t framebuffet_load_module(framebuffet_t *framebuffet, char *file_path);
+//fberror_t framebuffet_load_modules(framebuffet_t* framebuffet, char *directory_path);
 
-int framebuffet_configure_from_actions_json(framebuffet_t* framebuffet, char *json_string);
-int framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path);
+fberror_t framebuffet_configure_from_actions_json(framebuffet_t* framebuffet, char *json_string);
+fberror_t framebuffet_configure_from_actions_json_file(framebuffet_t* framebuffet, char *file_path);
 
-int framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor);
+fberror_t framebuffet_register_module(framebuffet_t *framebuffet, fbsource_module_descriptor_t module_descriptor);
 
-int framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config);
-int framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config);
+fberror_t framebuffet_set_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t *config);
+fberror_t framebuffet_get_configuration(framebuffet_t *framebuffet, char *config_name, fbcollections_map_entry_t **config);
 
-int framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
-int framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name);
-int framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed);
-int framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
+fberror_t framebuffet_create_source_instance(framebuffet_t *framebuffet, fbsource_module_instance_entry_t **source_instance, char *module_name, char *instance_name);
+fberror_t framebuffet_destroy_source_instance(framebuffet_t *framebuffet, char *instance_name);
+fberror_t framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet, int *num_destroyed);
+fberror_t framebuffet_configure_source_instance(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t *config);
 
 // API for general use (applications and modules)
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name);
-int framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance);
+fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *source_instance);
 
-int framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
+fberror_t framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 
-int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance);
-int framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
-int framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
-bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
-int framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
-int framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
+int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance); // FIXME: Windows DLL shim returns an error code; change return value to fberror_t and use result pointer
+fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
+fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token); // FIXME: missing on Windows DLL shim which will need to return an error code; change return value to fberror_t and use result pointer
+fberror_t framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
+fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 
 #ifdef __cplusplus
 }
