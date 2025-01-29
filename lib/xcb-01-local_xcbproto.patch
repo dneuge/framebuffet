@@ -1,0 +1,134 @@
+--- a/xcb/configure	2024-04-15 17:09:34.000000000 +0200
++++ b/xcb/configure	2025-01-29 12:26:37.306087922 +0100
+@@ -20936,95 +20936,14 @@
+ # Checks for pkg-config packages
+ 
+ pkg_failed=no
+-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for xcb-proto >= 1.17.0" >&5
+-printf %s "checking for xcb-proto >= 1.17.0... " >&6; }
+ 
+-if test -n "$XCBPROTO_CFLAGS"; then
+-    pkg_cv_XCBPROTO_CFLAGS="$XCBPROTO_CFLAGS"
+- elif test -n "$PKG_CONFIG"; then
+-    if test -n "$PKG_CONFIG" && \
+-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"xcb-proto >= 1.17.0\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "xcb-proto >= 1.17.0") 2>&5
+-  ac_status=$?
+-  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+-  test $ac_status = 0; }; then
+-  pkg_cv_XCBPROTO_CFLAGS=`$PKG_CONFIG --cflags "xcb-proto >= 1.17.0" 2>/dev/null`
+-		      test "x$?" != "x0" && pkg_failed=yes
+-else
+-  pkg_failed=yes
+-fi
+- else
+-    pkg_failed=untried
+-fi
+-if test -n "$XCBPROTO_LIBS"; then
+-    pkg_cv_XCBPROTO_LIBS="$XCBPROTO_LIBS"
+- elif test -n "$PKG_CONFIG"; then
+-    if test -n "$PKG_CONFIG" && \
+-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"xcb-proto >= 1.17.0\""; } >&5
+-  ($PKG_CONFIG --exists --print-errors "xcb-proto >= 1.17.0") 2>&5
+-  ac_status=$?
+-  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+-  test $ac_status = 0; }; then
+-  pkg_cv_XCBPROTO_LIBS=`$PKG_CONFIG --libs "xcb-proto >= 1.17.0" 2>/dev/null`
+-		      test "x$?" != "x0" && pkg_failed=yes
+-else
+-  pkg_failed=yes
+-fi
+- else
+-    pkg_failed=untried
+-fi
+-
+-
+-
+-if test $pkg_failed = yes; then
+-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+-printf "%s\n" "no" >&6; }
+-
+-if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+-        _pkg_short_errors_supported=yes
+-else
+-        _pkg_short_errors_supported=no
+-fi
+-        if test $_pkg_short_errors_supported = yes; then
+-                XCBPROTO_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "xcb-proto >= 1.17.0" 2>&1`
+-        else
+-                XCBPROTO_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "xcb-proto >= 1.17.0" 2>&1`
+-        fi
+-        # Put the nasty error message in config.log where it belongs
+-        echo "$XCBPROTO_PKG_ERRORS" >&5
+-
+-        as_fn_error $? "Package requirements (xcb-proto >= 1.17.0) were not met:
+-
+-$XCBPROTO_PKG_ERRORS
+-
+-Consider adjusting the PKG_CONFIG_PATH environment variable if you
+-installed software in a non-standard prefix.
+-
+-Alternatively, you may set the environment variables XCBPROTO_CFLAGS
+-and XCBPROTO_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details." "$LINENO" 5
+-elif test $pkg_failed = untried; then
+-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+-printf "%s\n" "no" >&6; }
+-        { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-printf "%s\n" "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+-is in your PATH or set the PKG_CONFIG environment variable to the full
+-path to pkg-config.
++# FrameBuffet: stub search for xcb-proto, we supply that on our own
++pkg_cv_XCBPROTO_CFLAGS=""
++pkg_cv_XCBPROTO_LIBS=""
++XCBPROTO_PKG_ERRORS=""
++XCBPROTO_CFLAGS=$pkg_cv_XCBPROTO_CFLAGS
++XCBPROTO_LIBS=$pkg_cv_XCBPROTO_LIBS
+ 
+-Alternatively, you may set the environment variables XCBPROTO_CFLAGS
+-and XCBPROTO_LIBS to avoid the need to call pkg-config.
+-See the pkg-config man page for more details.
+-
+-To get pkg-config, see <http://pkg-config.freedesktop.org/>.
+-See \`config.log' for more details" "$LINENO" 5; }
+-else
+-        XCBPROTO_CFLAGS=$pkg_cv_XCBPROTO_CFLAGS
+-        XCBPROTO_LIBS=$pkg_cv_XCBPROTO_LIBS
+-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+-printf "%s\n" "yes" >&6; }
+-
+-fi
+ NEEDED="xau >= 0.99.2"
+ case $host_os in
+ linux*|darwin*|solaris*|dragonfly*|freebsd*|netbsd*) ;;
+@@ -21255,24 +21174,14 @@
+ 
+ 
+ 
++## FrameBuffet: stub xcb-proto search, we supply xcb-proto on our own
+ # Find the xcb-proto protocol descriptions
+-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking XCBPROTO_XCBINCLUDEDIR" >&5
+-printf %s "checking XCBPROTO_XCBINCLUDEDIR... " >&6; }
+-XCBPROTO_XCBINCLUDEDIR=`$PKG_CONFIG --variable=xcbincludedir xcb-proto`
+-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $XCBPROTO_XCBINCLUDEDIR" >&5
+-printf "%s\n" "$XCBPROTO_XCBINCLUDEDIR" >&6; }
+-
+-
++XCBPROTO_XCBINCLUDEDIR="$(realpath "../xcb-proto/build/share/xcb/")"
+ # Find the xcb-proto version
+-XCBPROTO_VERSION=`$PKG_CONFIG --modversion xcb-proto`
+-
+-
++XCBPROTO_VERSION=$(grep -E "^PACKAGE_VERSION='.*'" ../xcb-proto/configure | head -n1 | sed -e 's#PACKAGE_VERSION='"'"'\(.*\)'"'"'#\1#')
++echo "xcb-proto version: ${XCBPROTO_VERSION}"
+ # Find the xcbgen Python package
+-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking XCBPROTO_XCBPYTHONDIR" >&5
+-printf %s "checking XCBPROTO_XCBPYTHONDIR... " >&6; }
+-XCBPROTO_XCBPYTHONDIR=`$PKG_CONFIG --variable=pythondir xcb-proto`
+-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $XCBPROTO_XCBPYTHONDIR" >&5
+-printf "%s\n" "$XCBPROTO_XCBPYTHONDIR" >&6; }
++XCBPROTO_XCBPYTHONDIR="$(realpath "../xcb-proto/build/")"
+ 
+ 
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for library containing getaddrinfo" >&5
