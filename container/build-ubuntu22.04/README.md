@@ -12,6 +12,7 @@ Primary:
  - GCC 10
  - MinGW
  - NASM
+ - Python 3.10
  - X11 development resources (X.org server, Xlib, Xext, Xcomposite, Xdamage)
 
 Supplemental:
@@ -22,6 +23,7 @@ Supplemental:
  - pkgconf
  - unzip
  - wget
+ - xmllint (via libxml2-utils)
 
 ## Building the image
 

@@ -19,10 +19,12 @@ RUN apt -y install \
     libxcomposite-dev \
     libxdamage-dev \
     libxext-dev \
+    libxml2-utils \
     mingw-w64 \
     nano \
     nasm \
     pkgconf \
+    python3 \
     unzip \
     xserver-xorg-dev \
     wget
