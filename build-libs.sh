@@ -183,6 +183,10 @@ if [[ "${BUILD_TARGET}" != "linux" ]]; then
     echo "==== Skipping xcb/xcb-proto (Linux only) ===="
 else
     echo "==== Building xcb/xcb-proto (Linux) ===="
+    python_version=$(python3 <<<'import sys;print("%d.%d" % (sys.version_info.major, sys.version_info.minor))' || die "unable to determine Python 3 version")
+    echo "using Python ${python_version}"
+    echo
+    
     echo "=== Building xcb-proto ==="
     cd_real_path "${script_dir}/lib/xcb-proto"
     [[ -e Makefile ]] && (make clean || die "xcb-proto make clean failed")
@@ -198,7 +202,7 @@ else
     [[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
     mkdir build || die "xcb mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb configure failed"
-    make -j$num_jobs || die "xcb make failed"
+    PYTHONPATH="$(realpath ../xcb-proto/build/local/lib/python${python_version}/dist-packages/):${PYTHONPATH:-}" make -j$num_jobs || die "xcb make failed"
     make install || die "xcb make install failed"
     cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb copy failed (1)"
     mkdir -p "${script_dir}/lib/_build/xcb"
