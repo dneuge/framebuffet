@@ -54,7 +54,7 @@ typedef struct {
 extern "C" {
 #endif
 
-int _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime);
+fberror_t _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime);
 
 #ifdef __cplusplus
 }
