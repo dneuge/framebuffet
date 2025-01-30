@@ -12,10 +12,12 @@ RUN apt -y update \
 
 RUN apt -y install \
     7zip \
+    autoconf \
     build-essential \
     cmake \
     curl \
     git \
+    libtool \
     libxcomposite-dev \
     libxdamage-dev \
     libxext-dev \
@@ -27,6 +29,7 @@ RUN apt -y install \
     python3 \
     unzip \
     xserver-xorg-dev \
+    xutils-dev \
     wget
 
 ## directory structure

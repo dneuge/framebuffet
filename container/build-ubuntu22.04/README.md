@@ -9,16 +9,19 @@ Base:
 
 Primary:
  - "build-essential"
+ - autoconf (incl. `autoreconf`)
  - GCC 10
  - MinGW
  - NASM
  - Python 3.10
  - X11 development resources (X.org server, Xlib, Xext, Xcomposite, Xdamage)
+   - X.org autoconf macros (package `xutils-dev`)
 
 Supplemental:
  - 7zip
  - curl
  - git
+ - libtool
  - nano
  - pkgconf
  - unzip
