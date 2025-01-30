@@ -10,17 +10,24 @@
 #include <sys/select.h>
 #include <sys/shm.h>
 
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/extensions/Xcomposite.h>
-#include <X11/extensions/Xdamage.h>
-#include <X11/extensions/XShm.h>
+#include <xcb/xcb.h>
+#include <xcb/xcb_image.h>
+#include <xcb/xcb_util.h>
+#include <xcb/composite.h>
+#include <xcb/damage.h>
+#include <xcb/shm.h>
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
 
 #define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR 1
 #define FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR 1
+
+#define WINDOW_NAME_MAX_LENGTH_IN_NUM_QUADS (1024 / 4) /* must be factor to 4, see xcb_get_property documentation */
+
+/* Useful resources for de-mystifying XCB:
+ * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
+ */
 
 typedef struct {
     mtx_t mutex;
@@ -35,7 +42,7 @@ typedef struct {
     fbsource_token_t frame_token;
     fbcollections_map_entry_t* source_config;
 
-    Display *display;
+    xcb_connection_t *xcb_conn;
     char *display_name;
     char *window_search_name_exact;
     bool allow_shm;
@@ -48,13 +55,13 @@ typedef struct {
     int complete_buffer;
 
     // only to be handled by generator thread: (not protected by mutex)
-    Window window;
+    xcb_window_t window;
     bool redirected_window;
     bool shm_assigned;
     bool shm_attached_self;
     bool shm_attached_xserver;
-    XImage *X_image;
-    XShmSegmentInfo shm_info;
+    xcb_image_t *X_image;
+    xcb_shm_segment_info_t shm_info;
     fd_set connection_fd_set;
     int connection_fd_set_count;
     int connection_fd_stop_excl;
@@ -78,23 +85,38 @@ static const struct timespec wait_after_error = {
 
 // TODO: check extensions; required: composite >= 0.2, XShm for shm
 
-static bool find_window(fbsource_capture_x11_t *instance, Window window, Window *matched_window, char *exact_name) {
-    Window root;
-    Window parent;
-    Window *children;
-    unsigned int num_children;
-    Status status;
+static bool find_window(fbsource_capture_x11_t *instance, xcb_window_t window, xcb_window_t *matched_window, char *exact_name) {
+    xcb_window_t root;
+    xcb_window_t parent;
     bool found = false;
+    xcb_generic_error_t *xcb_err = NULL;
+
+    int exact_name_len = strlen(exact_name);
 
     // check current window name
-    char *X_window_name = NULL;
-    status = XFetchName(instance->display, window, &X_window_name);
-    if (status && X_window_name) {
-        found = !strcmp(exact_name, X_window_name);
+    xcb_get_property_cookie_t get_property_cookie = xcb_get_property(instance->xcb_conn, 0, window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 0, WINDOW_NAME_MAX_LENGTH_IN_NUM_QUADS);
+    xcb_get_property_reply_t *get_property_reply = xcb_get_property_reply(instance->xcb_conn, get_property_cookie, &xcb_err);
+    if (get_property_reply && !xcb_err) {
+        int xcb_window_name_len = xcb_get_property_value_length(get_property_reply);
+        if (xcb_window_name_len == exact_name_len) {
+            char *xcb_window_name = xcb_get_property_value(get_property_reply);
+            if (xcb_window_name && !strncmp(exact_name, xcb_window_name, xcb_window_name_len)) {
+                found = true;
+            }
+        }
     }
-    if (X_window_name) {
-        XFree(X_window_name);
-        X_window_name = NULL;
+    bool got_get_property_reply = false;
+    if (get_property_reply) {
+        got_get_property_reply = true;
+        free(get_property_reply);
+        get_property_reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_property failed; X11 error code %hu", xcb_err->error_code);
+        free(xcb_err);
+        xcb_err = NULL;
+    } else if (!got_get_property_reply) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_property failed without X11 error code");
     }
 
     if (found) {
@@ -103,22 +125,33 @@ static bool find_window(fbsource_capture_x11_t *instance, Window window, Window 
     }
 
     // recurse to check all child windows
-    status = XQueryTree(instance->display, window, &root, &parent, &children, &num_children);
-    if (!status) {
-        FBLOG_WARN(instance->ext_instance_ref, "XQueryTree failed: %d", status);
-        children = NULL;
-    }
-
-    if (children) {
-        for (unsigned int i=0; i<num_children; i++) {
-            if (find_window(instance, children[i], matched_window, exact_name)) {
-                found = true;
-                break;
+    xcb_query_tree_cookie_t query_tree_cookie = xcb_query_tree(instance->xcb_conn, window);
+    xcb_query_tree_reply_t *query_tree_reply = xcb_query_tree_reply(instance->xcb_conn, query_tree_cookie, &xcb_err);
+    if (query_tree_reply && !xcb_err) {
+        int num_children = xcb_query_tree_children_length(query_tree_reply);
+        xcb_window_t *children = xcb_query_tree_children(query_tree_reply);
+        if (children) {
+            for (unsigned int i=0; i<num_children; i++) {
+                if (find_window(instance, children[i], matched_window, exact_name)) {
+                    found = true;
+                    break;
+                }
             }
         }
-        
-        XFree(children);
         children = NULL;
+    }
+    bool got_query_tree_reply = false;
+    if (query_tree_reply) {
+        got_query_tree_reply = true;
+        free(query_tree_reply);
+        query_tree_reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_query_tree failed; X11 error code %hu", xcb_err->error_code);
+        free(xcb_err);
+        xcb_err = NULL;
+    } else if (!got_query_tree_reply) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_query_tree failed without X11 error code");
     }
 
     return found;
@@ -133,7 +166,13 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
 
     if (instance->redirected_window) {
         FBLOG_TRACE(instance->ext_instance_ref, "generator_reset: unredirect window");
-        XCompositeUnredirectWindow(instance->display, instance->window, CompositeRedirectAutomatic);
+        xcb_void_cookie_t cookie = xcb_composite_unredirect_window_checked(instance->xcb_conn, instance->window, XCB_COMPOSITE_REDIRECT_AUTOMATIC);
+        xcb_generic_error_t *xcb_err = xcb_request_check(instance->xcb_conn, cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "generator_reset: failed to unredirect window, X11 error code %hu", xcb_err->error_code);
+            free(xcb_err);
+            xcb_err = NULL;
+        }
         instance->redirected_window = false;
         FBLOG_TRACE(instance->ext_instance_ref, "generator_reset: unredirect window complete");
     }
@@ -172,22 +211,27 @@ static bool generator_reset(fbsource_capture_x11_t *instance, char *reason) {
 static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
     int res;
     bool success = true;
+    xcb_void_cookie_t void_cookie = {0};
     
     FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=0x%lx, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
 
     if (success && instance->shm_attached_xserver) {
         FBLOG_DEBUG(instance->ext_instance_ref, "detaching X server from SHM");
-        if (XShmDetach(instance->display, &instance->shm_info)) {
+        void_cookie = xcb_shm_detach_checked(instance->xcb_conn, instance->shm_info.shmseg);
+        xcb_generic_error_t *xcb_err = xcb_request_check(instance->xcb_conn, void_cookie);
+        if (!xcb_err) {
             instance->shm_attached_xserver = false;
         } else {
-            FBLOG_WARN(instance->ext_instance_ref, "XShmDetach failed");
+            FBLOG_WARN(instance->ext_instance_ref, "XShmDetach failed, X11 error code %hu", xcb_err->error_code);
             success = false;
+            free(xcb_err);
+            xcb_err = NULL;
         }
     }
     
     if (success && instance->X_image) {
         FBLOG_DEBUG(instance->ext_instance_ref, "destroying XImage");
-        XDestroyImage(instance->X_image);
+        xcb_image_destroy(instance->X_image);
         instance->X_image = NULL;
     }
 
@@ -244,8 +288,11 @@ static void add_connection_fd_set(fbsource_capture_x11_t *instance, int fd) {
 }
 
 static void init_connection_fd_set(fbsource_capture_x11_t *instance) {
+    // FIXME: this should hopefully no longer be necessary with xcb? (was needed for event handling)
+    /*
     clear_connection_fd_set(instance);
-    add_connection_fd_set(instance, XConnectionNumber(instance->display));
+    add_connection_fd_set(instance, XConnectionNumber(instance->xcb_conn));
+    */
 }
 
 static void wait_for_events(fbsource_capture_x11_t *instance) {
@@ -279,53 +326,102 @@ static void wait_for_events(fbsource_capture_x11_t *instance) {
     }
 }
 
+static uint8_t calc_shift(uint32_t mask) {
+    if (!mask) {
+        return 0;
+    }
+
+    uint8_t shift = 0;
+    while (!(mask & 0x1)) {
+        mask = mask >> 1;
+        shift++;
+    }
+
+    return shift;
+}
+
 static int generate(void *data) {
-    const int format = ZPixmap;
+    const xcb_image_format_t format = XCB_IMAGE_FORMAT_Z_PIXMAP;
 
     fbsource_capture_x11_t *instance = data;
 
     unsigned char *buffers[2];
     unsigned long buffer_size = 0;
 
-    Status status;
     int res;
 
     bool success;
     bool processed_image = false;
-    XWindowAttributes attrs;
-    XEvent event;
-    Damage damage;
+    xcb_get_geometry_reply_t *attrs = NULL;
+    xcb_generic_error_t *xcb_err = NULL;
+    xcb_damage_damage_t damage = {0}; // FIXME: correct type to subsitute Xlib Damage?
+    xcb_visualtype_t *xcb_visualtype = NULL;
     bool use_damage = true;
-    int damage_event_base;
-    int damage_error_base;
-    int damage_version_major;
-    int damage_version_minor;
-    
-    Window root_window = DefaultRootWindow(instance->display);
 
     bool use_shm = instance->allow_shm; // TODO: set based on server support
+    use_shm = false; // FIXME: current SHM implementation is horribly wrong, disable until fixed
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
     fbutil_set_current_thread_name("FBCapX/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
 
     init_connection_fd_set(instance);
-    
-    if (!XDamageQueryExtension(instance->display, &damage_event_base, &damage_error_base)) {
-        FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryExtension failed, disabling");
-        use_damage = false;
-    } else {
-        status = XDamageQueryVersion(instance->display, &damage_version_major, &damage_version_minor);
-        if (!status) {
-            FBLOG_WARN(instance->ext_instance_ref, "XDamageQueryVersion failed, disabling (status: %d)", status);
-            use_damage = false;
-        } else if ((damage_version_major < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_version_major == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_version_minor < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
-            FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
-            use_damage = false;
-        } else if ((damage_version_major != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_version_minor != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
-            FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_version_major, damage_version_minor, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
-        }
+
+    const xcb_setup_t *xcb_setup = xcb_get_setup(instance->xcb_conn);
+    if (!xcb_setup) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_setup failed; unable to run");
+        return 1;
     }
+
+    // TODO: should we handle different screens here?
+    int screen_number = 0;
+    xcb_window_t root_window = {0};
+    bool root_window_found = false;
+    int i = 0;
+    for (xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_setup); it.rem>0; xcb_screen_next(&it)) {
+        i++;
+        if (i < screen_number) {
+            continue;
+        }
+        xcb_screen_t *screen = it.data;
+        if (!screen) {
+            break;
+        }
+        root_window = screen->root;
+        root_window_found = true;
+        break;
+    }
+    if (!root_window_found) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to find root window; unable to run");
+        return 1;
+    }
+
+    xcb_damage_query_version_cookie_t damage_query_version_cookie = xcb_damage_query_version(instance->xcb_conn, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+    xcb_damage_query_version_reply_t *damage_query_version_reply = xcb_damage_query_version_reply(instance->xcb_conn, damage_query_version_cookie, &xcb_err);
+    bool got_damage_query_version_reply = false;
+    if (damage_query_version_reply) {
+        got_damage_query_version_reply = true;
+        if ((damage_query_version_reply->major_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_query_version_reply->major_version == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_query_version_reply->minor_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
+            FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+            use_damage = false;
+        } else if ((damage_query_version_reply->major_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_query_version_reply->minor_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
+            FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+        }
+        free(damage_query_version_reply);
+        damage_query_version_reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version failed, disabling; X11 error code %hu", xcb_err->error_code);
+        use_damage = false;
+        free(xcb_err);
+        xcb_err = NULL;
+    }
+    if (!got_damage_query_version_reply) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version returned no reply, disabling");
+        use_damage = false;
+    }
+
+    use_damage = false; // FIXME: disable Damage until event handling has been implemented to test function
 
     if (!use_damage) {
         FBLOG_WARN(instance->ext_instance_ref, "XDamage is not available, frames will be updated periodically instead of event-based, performance may be reduced");
@@ -344,24 +440,36 @@ static int generate(void *data) {
                 FBLOG_DEBUG(instance->ext_instance_ref, "window found: 0x%lx", instance->window);
                 success = true;
 
-                status = XGetWindowAttributes(instance->display, instance->window, &attrs);
-                if (!status) {
-                    FBLOG_WARN(instance->ext_instance_ref, "XGetWindowAttributes failed for window 0x%lx", instance->window);
+                if (attrs) {
+                    free(attrs);
+                    attrs = NULL;
+                }
+
+                xcb_get_geometry_cookie_t geometry_cookie = xcb_get_geometry(instance->xcb_conn, instance->window);
+                attrs = xcb_get_geometry_reply(instance->xcb_conn, geometry_cookie, &xcb_err);
+                if (xcb_err || !attrs) {
+                    if (xcb_err) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, attrs=%p", instance->window, xcb_err->error_code, attrs);
+                        free(xcb_err);
+                        xcb_err = NULL;
+                    } else {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, attrs=%p", instance->window, attrs);
+                    }
                     success = false;
                 } else {
                     // check window attributes
-                    if (attrs.depth != 24) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", attrs.depth, instance->window);
+                    if (attrs->depth != 24) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", attrs->depth, instance->window);
                         success = false;
                     }
 
-                    if (attrs.width < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", attrs.width, instance->window);
+                    if (attrs->width < 1) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", attrs->width, instance->window);
                         success = false;
                     }
 
-                    if (attrs.height < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", attrs.height, instance->window);
+                    if (attrs->height < 1) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", attrs->height, instance->window);
                         success = false;
                     }
                 }
@@ -383,7 +491,7 @@ static int generate(void *data) {
         }
 
         FBLOG_DEBUG(instance->ext_instance_ref, "worker allocating buffers");
-        buffer_size = 3 * attrs.width * attrs.height;
+        buffer_size = 3 * attrs->width * attrs->height;
         buffers[0] = malloc(buffer_size);
         buffers[1] = malloc(buffer_size);
         if (!buffers[0] || !buffers[1]) {
@@ -399,8 +507,8 @@ static int generate(void *data) {
             break;
         }
 
-        instance->width = attrs.width;
-        instance->height = attrs.height;
+        instance->width = attrs->width;
+        instance->height = attrs->height;
         instance->buffer_size = buffer_size;
         instance->buffers[0] = buffers[0];
         instance->buffers[1] = buffers[1];
@@ -411,13 +519,21 @@ static int generate(void *data) {
         framebuffet_publish_num_buffers(instance->ext_instance_ref, 1);
 
         // window needs to be redirected to off-screen buffer to be fully accessible if not visible
-        XCompositeRedirectWindow(instance->display, instance->window, CompositeRedirectAutomatic);
-        instance->redirected_window = true;
+        xcb_void_cookie_t xcb_void_cookie = xcb_composite_redirect_window_checked(instance->xcb_conn, instance->window, XCB_COMPOSITE_REDIRECT_AUTOMATIC);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (!xcb_err) {
+            instance->redirected_window = true;
+        } else {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_composite_redirect_window_checked failed, window may not be accessible while in background; X11 error code %hu", xcb_err->error_code);
+            free(xcb_err);
+            xcb_err = NULL;
+        }
 
         // create SHM XImage structure
         if (use_shm) {
             FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
-            instance->X_image = XShmCreateImage(instance->display, attrs.visual, attrs.depth, format, NULL, &instance->shm_info, attrs.width, attrs.height);
+            instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, 0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
+            // FIXME: SHM still needs to be attached at this point - how?!
             if (!instance->X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "XShmCreateImage failed, disabling SHM support");
                 use_shm = false;
@@ -426,7 +542,7 @@ static int generate(void *data) {
 
         // retrieve a SHM memory segment according to XImage specifications
         if (use_shm) {
-            instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->bytes_per_line * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
+            instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->stride * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
             if (instance->shm_info.shmid != -1) {
                 instance->shm_assigned = true;
             } else {
@@ -445,7 +561,7 @@ static int generate(void *data) {
                 instance->shm_attached_self = true;
                 instance->X_image->data = shm_addr;
                 instance->shm_info.shmaddr = shm_addr;
-                instance->shm_info.readOnly = False;
+                // FIXME: while using Xlib we have explicitly set shm_info.readOnly = false - do we somehow need that here as well?
             } else {
                 // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
                 FBLOG_WARN(instance->ext_instance_ref, "shmat failed (errno %d), disabling SHM support", errno);
@@ -457,13 +573,17 @@ static int generate(void *data) {
         }
 
         // attach the memory segment to X11
+        xcb_shm_seg_t xcb_shm_seg = {0}; // FIXME: where to get this from?
         if (use_shm) {
-            status = XShmAttach(instance->display, &instance->shm_info);
-            if (status) {
+            xcb_void_cookie = xcb_shm_attach_checked(instance->xcb_conn, xcb_shm_seg, instance->shm_info.shmid, 0); // FIXME: is read_only correct? is there any constant?
+            xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+            if (!xcb_err) {
                 instance->shm_attached_xserver = true;
             } else {
-                FBLOG_WARN(instance->ext_instance_ref, "XShmAttach failed (status %d), disabling SHM support", status);
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_attach_checked failed, disabling SHM support; X11 error code %hu", xcb_err->error_code);
                 use_shm = false;
+                free(xcb_err);
+                xcb_err = NULL;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
@@ -477,10 +597,14 @@ static int generate(void *data) {
         }
 
         // listen for events
-        XSelectInput(instance->display, instance->window, StructureNotifyMask);
+        // FIXME: equivalent of XSelectInput for xcb?
+        //XSelectInput(instance->xcb_conn, instance->window, StructureNotifyMask);
+        // FIXME: equivalent of XDamageCreate for xcb?
+        /*
         if (use_damage) {
-            damage = XDamageCreate(instance->display, instance->window, XDamageReportNonEmpty);
+            damage = XDamageCreate(instance->xcb_conn, instance->window, XDamageReportNonEmpty);
         }
+        */
 
         bool update_available = true;
         while (!instance->stop_generator) {
@@ -488,15 +612,68 @@ static int generate(void *data) {
                 update_available = false;
                 
                 clock_t benchStart = clock(); // DEBUG
+                // FIXME: format is probably wrong for both SHM and non-SHM calls
                 if (use_shm) {
-                    if (!XShmGetImage(instance->display, instance->window, instance->X_image, 0, 0, AllPlanes)) {
-                        FBLOG_WARN(instance->ext_instance_ref, "XShmGetImage failed");
+                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, 0, 0, attrs->width, attrs->height, 0xFFFFFFFF, format, xcb_shm_seg, 0);
+                    xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
+                    bool got_reply = false;
+                    if (shm_get_image_reply) {
+                        got_reply = true;
+                        free(shm_get_image_reply);
+                        shm_get_image_reply = NULL;
+                    }
+                    if (xcb_err) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_get_image failed; X11 error code %hu", xcb_err->error_code);
+                        free(xcb_err);
+                        xcb_err = NULL;
+                        break;
+                    }
+                    if (!got_reply) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_get_image failed without X11 error code");
                         break;
                     }
                 } else {
-                    instance->X_image = XGetImage(instance->display, instance->window, 0, 0, attrs.width, attrs.height, AllPlanes, format);
+                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, 0, 0, attrs->width, attrs->height, 0xFFFFFFFF);
+                    xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
+                    bool got_reply = false;
+                    if (get_image_reply)
+                    {
+                        got_reply = true;
+                        xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_image_reply->visual);
+                        if (instance->X_image) {
+                            // FIXME: do we need to free the buffer separately?
+                            xcb_image_destroy(instance->X_image);
+                            instance->X_image = NULL;
+                        }
+                        uint8_t *received = xcb_get_image_data(get_image_reply);
+                        int received_len = xcb_get_image_data_length(get_image_reply);
+                        if (!received) {
+                            FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: xcb_get_image_data returned NULL");
+                        } else {
+                            void *buffer = malloc(received_len);
+                            if (!buffer) {
+                                FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %d bytes to copy received image buffer", received_len);
+                            } else {
+                                memcpy(buffer, received, received_len);
+                                instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
+                            }
+                        }
+                        // FIXME: do we need to also free the reply's image data?
+                        free(get_image_reply);
+                        get_image_reply = NULL;
+                    }
+                    if (xcb_err) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed; X11 error code %hu", xcb_err->error_code);
+                        free(xcb_err);
+                        xcb_err = NULL;
+                        break;
+                    }
+                    if (!got_reply) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed without X11 error code");
+                        break;
+                    }
                     if (!instance->X_image) {
-                        FBLOG_WARN(instance->ext_instance_ref, "XGetImage failed");
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: no image received");
                         break;
                     }
                 }
@@ -505,23 +682,22 @@ static int generate(void *data) {
                 int work_buffer = (instance->complete_buffer + 1) % 2;
                 uint32_t *in = (uint32_t*) instance->X_image->data;
                 unsigned char *out = instance->buffers[work_buffer];
-            
-                int red_shift = 0;
-                int green_shift = 8;
-                int blue_shift = 16;
-                if (instance->X_image->byte_order == LSBFirst) {
-                    red_shift = 16;
-                    blue_shift = 0;
-                } else {
-                    FBLOG_WARN(instance->ext_instance_ref, "unsupported XImage byte order");
+
+                // TODO: cache shifts, recompute only when xcb_visualtype changes
+                int red_shift = calc_shift(xcb_visualtype->red_mask);
+                int green_shift = calc_shift(xcb_visualtype->green_mask);
+                int blue_shift = calc_shift(xcb_visualtype->blue_mask);
+
+                if (!xcb_visualtype) {
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_visualtype is unknown");
                     break;
                 }
 
-                for (int y=0; y<attrs.height; y++) {
-                    for (int x=0; x<attrs.width; x++) {
-                        *(out++) = ((*in) & instance->X_image->red_mask) >> red_shift;
-                        *(out++) = ((*in) & instance->X_image->green_mask) >> green_shift;
-                        *(out++) = ((*in) & instance->X_image->blue_mask) >> blue_shift;
+                for (int y=0; y<attrs->height; y++) {
+                    for (int x=0; x<attrs->width; x++) {
+                        *(out++) = ((*in) & xcb_visualtype->red_mask) >> red_shift;
+                        *(out++) = ((*in) & xcb_visualtype->green_mask) >> green_shift;
+                        *(out++) = ((*in) & xcb_visualtype->blue_mask) >> blue_shift;
                         in++;
                     }
                 }
@@ -531,7 +707,7 @@ static int generate(void *data) {
                 if (mtx_lock(&instance->mutex) != thrd_success) {
                     // just drop the frame if we cannot get hold of our mutex
                     FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
-                    XDestroyImage(instance->X_image);
+                    xcb_image_destroy(instance->X_image);
                     instance->X_image = NULL;
                     continue;
                 }
@@ -546,7 +722,7 @@ static int generate(void *data) {
                 clock_t benchPublished = clock(); // DEBUG
 
                 if (!use_shm) {
-                    XDestroyImage(instance->X_image);
+                    xcb_image_destroy(instance->X_image);
                     instance->X_image = NULL;
                 }
             
@@ -559,26 +735,29 @@ static int generate(void *data) {
             
             // process events
             bool size_changed = false;
-            while (XPending(instance->display) > 0) {
-                XNextEvent(instance->display, &event);
+            // FIXME: reimplement with xcb
+            /*
+            while (XPending(instance->xcb_conn) > 0) {
+                XNextEvent(instance->xcb_conn, &event);
 
                 if (use_damage && (event.type == damage_event_base)) {
                     XDamageNotifyEvent *e = (XDamageNotifyEvent*) &event;
                     if (e->drawable == instance->window) {
                         FBLOG_TRACE(instance->ext_instance_ref, "XDamage indicates update");
-                        XDamageSubtract(instance->display, e->damage, None, None);
+                        XDamageSubtract(instance->xcb_conn, e->damage, None, None);
                         update_available = true;
                         continue;
                     }
                 } else if (event.type == ConfigureNotify) {
                     XConfigureEvent *e = (XConfigureEvent*) &event;
-                    if ((e->window == instance->window) && ((e->width != attrs.width) || (e->height != attrs.height))) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs.width, attrs.height, e->width, e->height);
+                    if ((e->window == instance->window) && ((e->width != attrs->width) || (e->height != attrs->height))) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs->width, attrs->height, e->width, e->height);
                         size_changed = true;
                         continue;
                     }
                 }
             }
+            */
             if (size_changed) {
                 FBLOG_INFO(instance->ext_instance_ref, "window size changed, reinitializing");
                 break;
@@ -589,9 +768,16 @@ static int generate(void *data) {
         }
 
         // if we got here we are reinitializing or stopping and need to reset
-        XSelectInput(instance->display, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
+        // FIXME: equivalent for XSelectInput needed with xcb?
+        //XSelectInput(instance->xcb_conn, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
         if (use_damage) {
-            XDamageDestroy(instance->display, damage);
+            xcb_void_cookie = xcb_damage_destroy_checked(instance->xcb_conn, damage);
+            xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+            if (xcb_err) {
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_destroy_checked failed; X11 error code %hu", xcb_err->error_code);
+                free(xcb_err);
+                xcb_err = NULL;
+            }
         }
 
         // further resets will be handled for termination, no need to do it twice
@@ -631,6 +817,11 @@ static int generate(void *data) {
 
     clear_connection_fd_set(instance);
     
+    if (attrs) {
+        free(attrs);
+        attrs = NULL;
+    }
+
     FBLOG_INFO(instance->ext_instance_ref, "worker thread terminated");
 
     return out_err;
@@ -691,9 +882,9 @@ static fberror_t capture_x11_destroy(void *data) {
     // buffers are already freed at end of generator thread
     
     // disconnect from X server if failed
-    if (instance->display) {
-        XCloseDisplay(instance->display);
-        instance->display = NULL;
+    if (instance->xcb_conn) {
+        xcb_disconnect(instance->xcb_conn);
+        instance->xcb_conn = NULL;
     }
 
     if (instance->display_name) {
@@ -775,9 +966,9 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
     }
 
     // reset
-    if (instance->display) {
-        XCloseDisplay(instance->display);
-        instance->display = NULL;
+    if (instance->xcb_conn) {
+        xcb_disconnect(instance->xcb_conn);
+        instance->xcb_conn = NULL;
     }
     
     if (instance->display_name) {
@@ -803,8 +994,8 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
     // connect to X server
     if (success) {
         instance->display_name = copy_string(get_config_pointer(instance, "display")); // defaults to environment if null
-        instance->display = XOpenDisplay(instance->display_name);
-        if (!instance->display) {
+        instance->xcb_conn = xcb_connect(instance->display_name, NULL);
+        if (!instance->xcb_conn) {
             FBLOG_WARN(instance->ext_instance_ref, "connection to X server display failed (%s)", instance->display_name ? instance->display_name : "default");
             success = false;
         }
@@ -813,7 +1004,7 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
     /*
     // disconnect from X server if failed
     if (!success && instance->display) {
-        XCloseDisplay(instance->display);
+        xcb_disconnect(instance->display);
         instance->display = NULL;
     }
     */
