@@ -1,0 +1,40 @@
+--- a/xcb_util/configure.ac	2025-01-30 00:58:55.197045277 +0100
++++ b/xcb_util/configure.ac	2025-01-30 01:05:16.102974273 +0100
+@@ -7,6 +7,8 @@
+ AC_CONFIG_MACRO_DIR([m4])
+ AM_INIT_AUTOMAKE([foreign dist-xz])
+ 
++LT_INIT
++
+ XCB_UTIL_COMMON([1.4], [1.6])
+ 
+ AC_CHECK_FUNCS_ONCE(vasprintf)
+--- a/xcb_util/Makefile.am	2025-01-30 01:04:00.699389281 +0100
++++ b/xcb_util/Makefile.am	2025-01-30 01:04:09.219342247 +0100
+@@ -2,11 +2,11 @@
+ 
+ SUBDIRS = src
+ 
+-pkgconfig_DATA =	\
+-	xcb-atom.pc	\
+-	xcb-aux.pc	\
+-	xcb-event.pc	\
+-	xcb-util.pc
++#pkgconfig_DATA =	\
++#	xcb-atom.pc	\
++#	xcb-aux.pc	\
++#	xcb-event.pc	\
++#	xcb-util.pc
+ 
+ MAINTAINERCLEANFILES = ChangeLog INSTALL
+ 
+--- a/xcb_util/src/Makefile.am	2025-01-30 00:58:55.197045277 +0100
++++ b/xcb_util/src/Makefile.am	2025-01-30 01:06:05.598703291 +0100
+@@ -10,6 +10,7 @@
+ 	event.c		\
+ 	xcb_aux.c
+ 
++xcbincludedir = .
+ xcbinclude_HEADERS =	\
+ 	xcb_util.h	\
+ 	xcb_atom.h	\

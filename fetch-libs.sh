@@ -204,3 +204,8 @@ download "Mesa" mesa mesa-22.3.1.tar.xz 16972884 https://archive.mesa3d.org/mesa
 download "cJSON" cjson cjson-1.7.15.zip 458334 https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.15.zip c55519316d940757ef93a779f1db1ca809dbf979c551861f339d35aaea1c907c c7100b3764d8718284d0d031d10e17d9
 download "xcb-proto" xcb_proto xcb-proto-1.17.0.tar.xz 151748 https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.17.0.tar.xz 2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c c415553d2ee1a8cea43c3234a079b53f
 download "xcb" xcb libxcb-1.17.0.tar.xz 455208 https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz 599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55 96565523e9f9b701fcb35d31f1d4086e
+git_mirror "xcb-util" freedesktop.libxcb-util.master.bundle https://gitlab.freedesktop.org/xorg/lib/libxcb-util.git master
+git_unbundle "xcb-util" xcb_util freedesktop.libxcb-util.master.bundle 3a157762578a2e4253a7cb40d2854a3444d5a9df # tag: xcb-util-0.4.1
+git_mirror "xcb-util-image" freedesktop.libxcb-util-image.master.bundle https://gitlab.freedesktop.org/xorg/lib/libxcb-image.git master
+git_unbundle "xcb-util-image" xcb_util_image freedesktop.libxcb-util-image.master.bundle 525ce59fe2329d4b23fc0c52ed9dd92daac8ac2a # tag: xcb-util-image-0.4.1
+#git_mirror "xcb-util-common-m4" freedesktop.libxcb-util-common-m4.master.bundle git://anongit.freedesktop.org/xcb/util-common-m4.git master
