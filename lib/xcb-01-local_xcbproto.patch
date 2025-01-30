@@ -115,12 +115,12 @@
 -printf "%s\n" "$XCBPROTO_XCBINCLUDEDIR" >&6; }
 -
 -
-+XCBPROTO_XCBINCLUDEDIR="$(realpath "../xcb-proto/build/share/xcb/")"
++XCBPROTO_XCBINCLUDEDIR="$(realpath "../xcb_proto/build/share/xcb/")"
  # Find the xcb-proto version
 -XCBPROTO_VERSION=`$PKG_CONFIG --modversion xcb-proto`
 -
 -
-+XCBPROTO_VERSION=$(grep -E "^PACKAGE_VERSION='.*'" ../xcb-proto/configure | head -n1 | sed -e 's#PACKAGE_VERSION='"'"'\(.*\)'"'"'#\1#')
++XCBPROTO_VERSION=$(grep -E "^PACKAGE_VERSION='.*'" ../xcb_proto/configure | head -n1 | sed -e 's#PACKAGE_VERSION='"'"'\(.*\)'"'"'#\1#')
 +echo "xcb-proto version: ${XCBPROTO_VERSION}"
  # Find the xcbgen Python package
 -{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking XCBPROTO_XCBPYTHONDIR" >&5
@@ -128,7 +128,7 @@
 -XCBPROTO_XCBPYTHONDIR=`$PKG_CONFIG --variable=pythondir xcb-proto`
 -{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $XCBPROTO_XCBPYTHONDIR" >&5
 -printf "%s\n" "$XCBPROTO_XCBPYTHONDIR" >&6; }
-+XCBPROTO_XCBPYTHONDIR="$(realpath "../xcb-proto/build/")"
++XCBPROTO_XCBPYTHONDIR="$(realpath "../xcb_proto/build/")"
  
  
  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for library containing getaddrinfo" >&5

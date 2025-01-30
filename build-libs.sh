@@ -188,7 +188,7 @@ else
     echo
     
     echo "=== Building xcb-proto ==="
-    cd_real_path "${script_dir}/lib/xcb-proto"
+    cd_real_path "${script_dir}/lib/xcb_proto"
     [[ -d build ]] && (rm -Rf build || die "xcb-proto rm clean failed")
     mkdir build || die "xcb-proto mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb-proto configure failed"
@@ -200,7 +200,7 @@ else
     [[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
     mkdir build || die "xcb mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb configure failed"
-    PYTHONPATH="$(realpath ../xcb-proto/build/local/lib/python${python_version}/dist-packages/):${PYTHONPATH:-}" make -j$num_jobs || die "xcb make failed"
+    PYTHONPATH="$(realpath ../xcb_proto/build/local/lib/python${python_version}/dist-packages/):${PYTHONPATH:-}" make -j$num_jobs || die "xcb make failed"
     make install || die "xcb make install failed"
     cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb copy failed (1)"
     mkdir -p "${script_dir}/lib/_build/xcb"
