@@ -253,7 +253,7 @@ else
     cd_real_path "${script_dir}/lib/xcb_util_image"
     [[ -d build ]] && (rm -Rf build || die "xcb-util-image rm clean failed")
     mkdir build || die "xcb-util-image mkdir failed"
-    ./configure --prefix="$(realpath build)" || die "xcb-util-image configure failed"
+    PKG_CONFIG_PATH="$(realpath "../xcb/build/lib/pkgconfig/"):$(realpath "../xcb_util/build/lib/pkgconfig/"):${PKG_CONFIG_PATH:-}" ./configure --prefix="$(realpath build)" || die "xcb-util-image configure failed"
     PYTHONPATH="$(realpath "../xcb_proto/build/local/lib/python${python_version}/dist-packages/"):${PYTHONPATH:-}" make -j$num_jobs || die "xcb-util-image make failed"
     make install || die "xcb-util-image make install failed"
     cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb-util-image copy failed (1)"
