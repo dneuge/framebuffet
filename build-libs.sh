@@ -189,7 +189,6 @@ else
     
     echo "=== Building xcb-proto ==="
     cd_real_path "${script_dir}/lib/xcb-proto"
-    [[ -e Makefile ]] && (make clean || die "xcb-proto make clean failed")
     [[ -d build ]] && (rm -Rf build || die "xcb-proto rm clean failed")
     mkdir build || die "xcb-proto mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb-proto configure failed"
@@ -198,7 +197,6 @@ else
 
     echo "=== Building xcb ==="
     cd_real_path "${script_dir}/lib/xcb"
-    [[ -e Makefile ]] && (make clean || die "xcb make clean failed")
     [[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
     mkdir build || die "xcb mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb configure failed"
