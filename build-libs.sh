@@ -184,7 +184,12 @@ if [[ "${BUILD_TARGET}" != "linux" ]]; then
 else
     echo "==== Building xcb/xcb-proto (Linux) ===="
     python_version=$(python3 <<<'import sys;print("%d.%d" % (sys.version_info.major, sys.version_info.minor))' || die "unable to determine Python 3 version")
+    xcb_util_m4_revision="c617eee22ae5c285e79e81ec39ce96862fd3262f"
+    xcb_util_image_m4_revision="${xcb_util_m4_revision}"
+
     echo "using Python ${python_version}"
+    echo "xcb-util       uses m4 revision ${xcb_util_m4_revision}"
+    echo "xcb-util-image uses m4 revision ${xcb_util_image_m4_revision}"
     echo
     
     echo "=== Building xcb-proto ==="
@@ -200,11 +205,59 @@ else
     [[ -d build ]] && (rm -Rf build || die "xcb rm clean failed")
     mkdir build || die "xcb mkdir failed"
     ./configure --prefix="$(realpath build)" || die "xcb configure failed"
-    PYTHONPATH="$(realpath ../xcb_proto/build/local/lib/python${python_version}/dist-packages/):${PYTHONPATH:-}" make -j$num_jobs || die "xcb make failed"
+    PYTHONPATH="$(realpath "../xcb_proto/build/local/lib/python${python_version}/dist-packages/"):${PYTHONPATH:-}" make -j$num_jobs || die "xcb make failed"
     make install || die "xcb make install failed"
     cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb copy failed (1)"
     mkdir -p "${script_dir}/lib/_build/xcb"
     cp -a build/include/xcb/* "${script_dir}/lib/_build/xcb/" || die "xcb copy failed (2)"
+    echo
+    
+    echo "=== Preparing xcb-util ==="
+    cd_real_path "${script_dir}/lib/xcb_util"
+    [[ -d m4 ]] && (rm -Rf m4 || die "xcb-util rm m4 failed")
+    [[ -f .gitmodules ]] && (rm .gitmodules || die "xcb-util rm .gitmodules failed")
+    mkdir m4 || die "xcb-util failed to create m4 directory"
+    cd m4
+    git init . || die "xcb-util failed to initialize m4 git repo"
+    git bundle unbundle "${script_dir}/lib/_downloads/freedesktop.libxcb-util-m4.master.bundle" || die "xcb-util failed to unbundle m4 repo"
+    git checkout "${xcb_util_m4_revision}" || die "xcb-util failed to checkout m4 revision ${xcb_util_m4_revision}"
+    cd ..
+    autoreconf -v --install || die "xcb-util autoreconf failed"
+    echo
+    
+    echo "=== Building xcb-util ==="
+    cd_real_path "${script_dir}/lib/xcb_util"
+    [[ -d build ]] && (rm -Rf build || die "xcb-util rm clean failed")
+    mkdir build || die "xcb-util mkdir failed"
+    ./configure --prefix="$(realpath build)" || die "xcb-util configure failed"
+    PYTHONPATH="$(realpath "../xcb_proto/build/local/lib/python${python_version}/dist-packages/"):${PYTHONPATH:-}" make -j$num_jobs || die "xcb-util make failed"
+    make install || die "xcb-util make install failed"
+    cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb-util copy failed (1)"
+    cp -a build/include/xcb/* "${script_dir}/lib/_build/xcb/" || die "xcb-util copy failed (2)"
+    echo
+    
+    echo "=== Preparing xcb-util-image ==="
+    cd_real_path "${script_dir}/lib/xcb_util_image"
+    [[ -d m4 ]] && (rm -Rf m4 || die "xcb-util-image rm m4 failed")
+    [[ -f .gitmodules ]] && (rm .gitmodules || die "xcb-util-image rm .gitmodules failed")
+    mkdir m4 || die "xcb-util-image failed to create m4 directory"
+    cd m4
+    git init . || die "xcb-util-image failed to initialize m4 git repo"
+    git bundle unbundle "${script_dir}/lib/_downloads/freedesktop.libxcb-util-m4.master.bundle" || die "xcb-util-image failed to unbundle m4 repo"
+    git checkout "${xcb_util_image_m4_revision}" || die "xcb-util-image failed to checkout m4 revision ${xcb_util_image_m4_revision}"
+    cd ..
+    autoreconf -v --install || die "xcb-util-image autoreconf failed"
+    echo
+    
+    echo "=== Building xcb-util-image ==="
+    cd_real_path "${script_dir}/lib/xcb_util_image"
+    [[ -d build ]] && (rm -Rf build || die "xcb-util-image rm clean failed")
+    mkdir build || die "xcb-util-image mkdir failed"
+    ./configure --prefix="$(realpath build)" || die "xcb-util-image configure failed"
+    PYTHONPATH="$(realpath "../xcb_proto/build/local/lib/python${python_version}/dist-packages/"):${PYTHONPATH:-}" make -j$num_jobs || die "xcb-util-image make failed"
+    make install || die "xcb-util-image make install failed"
+    cp -a build/lib/*.a "${script_dir}/lib/_build/" || die "xcb-util-image copy failed (1)"
+    cp -a build/include/xcb/* "${script_dir}/lib/_build/xcb/" || die "xcb-util-image copy failed (2)"
     echo
 fi
 

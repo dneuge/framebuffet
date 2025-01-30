@@ -1,0 +1,12 @@
+--- a/xcb_util/src/Makefile.am	2025-01-30 18:56:06.754945499 +0100
++++ b/xcb_util/src/Makefile.am	2025-01-30 19:16:08.090315355 +0100
+@@ -1,7 +1,7 @@
+ lib_LTLIBRARIES = libxcb-util.la
+ 
+-AM_CPPFLAGS = $(XCB_CFLAGS)
+-AM_CFLAGS = $(CWARNFLAGS)
++AM_CPPFLAGS = $(XCB_CFLAGS) -fPIC
++AM_CFLAGS = $(CWARNFLAGS) -fPIC
+ 
+ libxcb_util_la_LIBADD = $(XCB_LIBS)
+ libxcb_util_la_LDFLAGS = -version-info 1:0:0 -no-undefined

@@ -205,7 +205,8 @@ download "cJSON" cjson cjson-1.7.15.zip 458334 https://github.com/DaveGamble/cJS
 download "xcb-proto" xcb_proto xcb-proto-1.17.0.tar.xz 151748 https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.17.0.tar.xz 2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c c415553d2ee1a8cea43c3234a079b53f
 download "xcb" xcb libxcb-1.17.0.tar.xz 455208 https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz 599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55 96565523e9f9b701fcb35d31f1d4086e
 git_mirror "xcb-util" freedesktop.libxcb-util.master.bundle https://gitlab.freedesktop.org/xorg/lib/libxcb-util.git master
-git_unbundle "xcb-util" xcb_util freedesktop.libxcb-util.master.bundle 3a157762578a2e4253a7cb40d2854a3444d5a9df # tag: xcb-util-0.4.1
+git_unbundle "xcb-util" xcb_util freedesktop.libxcb-util.master.bundle bffd8df1725c0fae9105a097e75b466e2f49d7bd # tag: xcb-util-0.4.1-gitlab
 git_mirror "xcb-util-image" freedesktop.libxcb-util-image.master.bundle https://gitlab.freedesktop.org/xorg/lib/libxcb-image.git master
-git_unbundle "xcb-util-image" xcb_util_image freedesktop.libxcb-util-image.master.bundle 525ce59fe2329d4b23fc0c52ed9dd92daac8ac2a # tag: xcb-util-image-0.4.1
-#git_mirror "xcb-util-common-m4" freedesktop.libxcb-util-common-m4.master.bundle git://anongit.freedesktop.org/xcb/util-common-m4.git master
+git_unbundle "xcb-util-image" xcb_util_image freedesktop.libxcb-util-image.master.bundle 1abfc17b1e08e46dbdf34b4ef36097a8c307a8ec # tag: xcb-util-image-0.4.1-gitlab
+git_mirror "xcb-util-m4" freedesktop.libxcb-util-m4.master.bundle https://gitlab.freedesktop.org/xorg/util/xcb-util-m4.git master
+#git_unbundle "xcb-util-m4" xcb_util_m4 freedesktop.libxcb-util-m4.master.bundle c617eee22ae5c285e79e81ec39ce96862fd3262f # as used by xcb-util and xcb-util-image

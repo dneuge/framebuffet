@@ -1,0 +1,13 @@
+--- a/xcb_util_image/image/Makefile.am	2025-01-30 18:44:53.794791051 +0100
++++ b/xcb_util_image/image/Makefile.am	2025-01-30 19:21:51.830201176 +0100
+@@ -2,8 +2,8 @@
+ 
+ xcbinclude_HEADERS = xcb_image.h xcb_pixel.h xcb_bitops.h
+ 
+-AM_CFLAGS = $(CWARNFLAGS)
+-AM_CPPFLAGS = 			\
++AM_CFLAGS = $(CWARNFLAGS) -fPIC
++AM_CPPFLAGS = -fPIC		\
+ 	$(XCB_CFLAGS)		\
+ 	$(XCB_SHM_CFLAGS)	\
+ 	$(XCB_UTIL_CFLAGS)	\
