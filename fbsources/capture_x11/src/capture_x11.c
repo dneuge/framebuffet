@@ -476,6 +476,7 @@ static int generate(void *data) {
             }
             
             if (success) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "window attributes: width=%d, height=%d", attrs->width, attrs->height);
                 break;
             }
 
