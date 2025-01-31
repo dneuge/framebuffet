@@ -694,13 +694,17 @@ static int generate(void *data) {
                     break;
                 }
 
-                for (int y=0; y<attrs->height; y++) {
-                    for (int x=0; x<attrs->width; x++) {
-                        *(out++) = ((*in) & xcb_visualtype->red_mask) >> red_shift;
-                        *(out++) = ((*in) & xcb_visualtype->green_mask) >> green_shift;
-                        *(out++) = ((*in) & xcb_visualtype->blue_mask) >> blue_shift;
-                        in++;
-                    }
+                const uint32_t red_mask = xcb_visualtype->red_mask;
+                const uint32_t green_mask = xcb_visualtype->green_mask;
+                const uint32_t blue_mask = xcb_visualtype->blue_mask;
+
+                const uint32_t *end = in + (attrs->height * attrs->width);
+                while (in < end) {
+                    const uint32_t in_val = *in;
+                    *(out++) = (in_val & red_mask) >> red_shift;
+                    *(out++) = (in_val & green_mask) >> green_shift;
+                    *(out++) = (in_val & blue_mask) >> blue_shift;
+                    in++;
                 }
                 clock_t benchConverted = clock(); // DEBUG
 
