@@ -88,6 +88,12 @@ static const struct timespec wait_after_error = {
     .tv_nsec = 0
 };
 
+typedef struct _damage_list_item_t damage_list_item_t;
+typedef struct _damage_list_item_t {
+    xcb_damage_damage_t xcb_damage;
+    damage_list_item_t *next;
+} damage_list_item_t;
+
 // TODO: check extensions; required: composite >= 0.2, XShm for shm
 
 static bool find_window(fbsource_capture_x11_t *instance, xcb_window_t window, xcb_window_t *matched_window, char *exact_name) {
@@ -355,6 +361,169 @@ static uint8_t calc_shift(uint32_t mask) {
     return shift;
 }
 
+/**
+ * Frees the entire list starting from given head.
+ * @param head head of list to free all items of; allowed to be null
+ */
+static void free_damages_list(damage_list_item_t *head) {
+    while (head) {
+        damage_list_item_t *next = head->next;
+        head->xcb_damage = -1;
+        head->next = NULL;
+        free(head);
+        head = next;
+    }
+}
+
+/**
+ * Calls xcb_damage_destroy for all items of given list and removes them if successful.
+ * Unsuccessfully destroyed instances are kept in the list. The given list head is moved so that points to the first
+ * undestroyable instance or NULL if successful.
+ * @param instance capture instance
+ * @param head_item pointer to list head, list head will be moved to first failed item or set to NULL if all items were successfully destroyed; allowed to be NULL
+ * @return true if successful, false if (partially) failed
+ */
+static bool destroy_damages(fbsource_capture_x11_t *instance, damage_list_item_t **head_item) {
+    xcb_generic_error_t *xcb_err = NULL;
+    xcb_void_cookie_t xcb_void_cookie = {0};
+
+    if (!head_item || !*head_item) {
+        return true;
+    }
+
+    damage_list_item_t *item = *head_item;
+    while (item) {
+        xcb_void_cookie = xcb_damage_destroy_checked(instance->xcb_conn, item->xcb_damage);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "[destroy_damages] failed to destroy damage instance on X server");
+            item = item->next;
+
+            free(xcb_err);
+            xcb_err = NULL;
+
+            // keep item in list
+            continue;
+        }
+
+        // remove item from list
+        damage_list_item_t *next = item->next;
+        item->xcb_damage = -1;
+        item->next = NULL;
+        free(item);
+
+        // move head to new item
+        if (*head_item == item) {
+            *head_item = next;
+        }
+
+        item = next;
+    }
+
+    return !*head_item;
+}
+
+/**
+ * Creates damage monitor instances via xcb_damage_create, recursively if possible.
+ * @param instance capture instance
+ * @param drawable drawable to monitor
+ * @param drawable_is_window set to true if the drawable is a window (will attempt recursive monitoring), false if not
+ * @return list of registered damage instances or NULL if failed
+ */
+static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_drawable_t drawable, bool drawable_is_window) {
+    xcb_generic_error_t *xcb_err = NULL;
+    xcb_void_cookie_t xcb_void_cookie = {0};
+
+    damage_list_item_t *head_item = malloc(sizeof(damage_list_item_t));
+    if (!head_item) {
+        FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to allocate list item");
+        return NULL;
+    }
+    head_item->xcb_damage = -1;
+    head_item->next = NULL;
+
+    head_item->xcb_damage = xcb_generate_id(instance->xcb_conn);
+    if (head_item->xcb_damage == -1) {
+        FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to create XDamage ID");
+        free(head_item);
+        return NULL;
+    }
+
+    FBLOG_TRACE(instance->ext_instance_ref, "[create_damages] registering damage for drawable 0x%08x", drawable);
+    xcb_void_cookie = xcb_damage_create_checked(instance->xcb_conn, head_item->xcb_damage, drawable, XCB_DAMAGE_REPORT_LEVEL_NON_EMPTY);
+    xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to create XDamage monitor for drawable 0x%08x, X11 error code %hu", drawable, xcb_err->error_code);
+        free(xcb_err);
+        xcb_err = NULL;
+
+        free(head_item);
+        return NULL;
+    }
+
+    // we can only recurse into sub-windows, not other types of drawables
+    if (!drawable_is_window) {
+        return head_item;
+    }
+
+    bool success = true;
+    damage_list_item_t *item = head_item;
+    xcb_query_tree_cookie_t query_tree_cookie = xcb_query_tree(instance->xcb_conn, drawable);
+    xcb_query_tree_reply_t *query_tree_reply = xcb_query_tree_reply(instance->xcb_conn, query_tree_cookie, &xcb_err);
+    bool got_query_tree_reply = false;
+    if (query_tree_reply && !xcb_err) {
+        got_query_tree_reply = true;
+        int num_child_windows = xcb_query_tree_children_length(query_tree_reply);
+        FBLOG_TRACE(instance->ext_instance_ref, "[create_damages] registering damage for %d child windows", num_child_windows);
+        xcb_window_t *windows = xcb_query_tree_children(query_tree_reply);
+        for (int i=0; i<num_child_windows; i++) {
+            xcb_window_t window = windows[i];
+
+            damage_list_item_t *sublist = create_damages(instance, window, true);
+            if (!sublist) {
+                // FIXME: we currently continue if a *child* failed, regardless of the reason - this makes sense for windows that apparently cannot be monitored but it would be better to prevent requesting a monitor then instead
+                /*
+                success = false;
+                break;
+                */
+                continue;
+            }
+
+            // join result to list
+            item->next = sublist;
+
+            // forward list to last item
+            while (item->next) {
+                item = item->next;
+            }
+        }
+        free(query_tree_reply);
+        query_tree_reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "[create_damages] xcb_query_tree failed; X11 error code %hu", xcb_err->error_code);
+        success = false;
+        free(xcb_err);
+        xcb_err = NULL;
+    } else if (!got_query_tree_reply) {
+        FBLOG_WARN(instance->ext_instance_ref, "[create_damages] xcb_query_tree failed without reply");
+        success = false;
+    }
+
+    if (success) {
+        return head_item;
+    }
+
+    if (destroy_damages(instance, &head_item)) {
+        return NULL;
+    }
+
+    FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to destroy some instances; freeing list but damages may remain registered");
+    free_damages_list(head_item);
+
+    return NULL;
+}
+
 static int generate(void *data) {
     const xcb_image_format_t format = XCB_IMAGE_FORMAT_Z_PIXMAP;
 
@@ -369,7 +538,8 @@ static int generate(void *data) {
     bool processed_image = false;
     xcb_get_geometry_reply_t *attrs = NULL;
     xcb_generic_error_t *xcb_err = NULL;
-    xcb_damage_damage_t damage = {0}; // FIXME: correct type to subsitute Xlib Damage?
+    damage_list_item_t *damages = NULL;
+    uint8_t damage_event_base = 0;
     xcb_visualtype_t *xcb_visualtype = NULL;
     bool use_damage = true;
 
@@ -440,32 +610,56 @@ static int generate(void *data) {
         }
     }
 
-    xcb_damage_query_version_cookie_t damage_query_version_cookie = xcb_damage_query_version(instance->xcb_conn, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
-    xcb_damage_query_version_reply_t *damage_query_version_reply = xcb_damage_query_version_reply(instance->xcb_conn, damage_query_version_cookie, &xcb_err);
-    bool got_damage_query_version_reply = false;
-    if (damage_query_version_reply) {
-        got_damage_query_version_reply = true;
-        if ((damage_query_version_reply->major_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_query_version_reply->major_version == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_query_version_reply->minor_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
-            FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+    const char *damage_extension_name = "DAMAGE";
+    xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
+    xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
+    bool got_query_extension_reply = false;
+    if (query_extension_reply && !xcb_err) {
+        got_query_extension_reply = true;
+        damage_event_base = query_extension_reply->first_event;
+        if (!query_extension_reply->present) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
             use_damage = false;
-        } else if ((damage_query_version_reply->major_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_query_version_reply->minor_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
-            FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
         }
-        free(damage_query_version_reply);
-        damage_query_version_reply = NULL;
+        free(query_extension_reply);
+        query_extension_reply = NULL;
     }
     if (xcb_err) {
-        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version failed, disabling; X11 error code %hu", xcb_err->error_code);
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension for %s failed, disabling XDamage; X11 error code %hu", damage_extension_name, xcb_err->error_code);
         use_damage = false;
         free(xcb_err);
         xcb_err = NULL;
-    }
-    if (!got_damage_query_version_reply) {
-        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version returned no reply, disabling");
+    } else if (!got_query_extension_reply) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "xcb_query_extension for %s failed without X11 error code, disabling XDamage", damage_extension_name);
         use_damage = false;
     }
 
-    use_damage = false; // FIXME: disable Damage until event handling has been implemented to test function
+    if (use_damage) {
+        xcb_damage_query_version_cookie_t damage_query_version_cookie = xcb_damage_query_version(instance->xcb_conn, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+        xcb_damage_query_version_reply_t *damage_query_version_reply = xcb_damage_query_version_reply(instance->xcb_conn, damage_query_version_cookie, &xcb_err);
+        bool got_damage_query_version_reply = false;
+        if (damage_query_version_reply) {
+            got_damage_query_version_reply = true;
+            if ((damage_query_version_reply->major_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_query_version_reply->major_version == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_query_version_reply->minor_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
+                FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+                use_damage = false;
+            } else if ((damage_query_version_reply->major_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_query_version_reply->minor_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
+                FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
+            }
+            free(damage_query_version_reply);
+            damage_query_version_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version failed, disabling; X11 error code %hu", xcb_err->error_code);
+            use_damage = false;
+            free(xcb_err);
+            xcb_err = NULL;
+        }
+        if (!got_damage_query_version_reply) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version returned no reply, disabling");
+            use_damage = false;
+        }
+    }
 
     if (!use_damage) {
         FBLOG_WARN(instance->ext_instance_ref, "XDamage is not available, frames will be updated periodically instead of event-based, performance may be reduced");
@@ -747,12 +941,18 @@ static int generate(void *data) {
         // listen for events
         // FIXME: equivalent of XSelectInput for xcb?
         //XSelectInput(instance->xcb_conn, instance->window, StructureNotifyMask);
-        // FIXME: equivalent of XDamageCreate for xcb?
-        /*
-        if (use_damage) {
-            damage = XDamageCreate(instance->xcb_conn, instance->window, XDamageReportNonEmpty);
+        if (!destroy_damages(instance, &damages)) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances on reconfiguration");
+            free_damages_list(damages);
+            damages = NULL;
         }
-        */
+        if (use_damage) {
+            damages = create_damages(instance, instance->window, true);
+            if (!damages) {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to create XDamage monitors, disabling");
+                use_damage = false;
+            }
+        }
 
         bool update_available = true;
         while (!instance->stop_generator) {
@@ -872,26 +1072,42 @@ static int generate(void *data) {
             
                 clock_t benchDone = clock(); // DEBUG
 
-                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f, use_shm=%d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm);
+                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f, use_shm=%d, use_damage=%d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage);
 
                 processed_image = true;
             }
             
             // process events
             bool size_changed = false;
+            xcb_generic_event_t *event = NULL;
+            xcb_aux_sync(instance->xcb_conn);
+            while ((event = xcb_poll_for_queued_event(instance->xcb_conn)) != NULL) {
+                uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
+                FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
+                if (use_damage && event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
+                    xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "XDamage notification received for 0x%08x", e->drawable);
+                    update_available = true;
+                    xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
+                    xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+                    if (xcb_err) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
+                        use_damage = false;
+                        if (!destroy_damages(instance, &damages)) {
+                            FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances");
+                        }
+                        free(xcb_err);
+                        xcb_err = NULL;
+                    }
+                }
+
+                free(event);
+                event = NULL;
+            }
+
+
             // FIXME: reimplement with xcb
             /*
-            while (XPending(instance->xcb_conn) > 0) {
-                XNextEvent(instance->xcb_conn, &event);
-
-                if (use_damage && (event.type == damage_event_base)) {
-                    XDamageNotifyEvent *e = (XDamageNotifyEvent*) &event;
-                    if (e->drawable == instance->window) {
-                        FBLOG_TRACE(instance->ext_instance_ref, "XDamage indicates update");
-                        XDamageSubtract(instance->xcb_conn, e->damage, None, None);
-                        update_available = true;
-                        continue;
-                    }
                 } else if (event.type == ConfigureNotify) {
                     XConfigureEvent *e = (XConfigureEvent*) &event;
                     if ((e->window == instance->window) && ((e->width != attrs->width) || (e->height != attrs->height))) {
@@ -907,22 +1123,15 @@ static int generate(void *data) {
                 break;
             }
             if (use_damage && !update_available) {
-                wait_for_events(instance);
+                // TODO: unfortunately XCB does not appear to have a timed method to wait for events, so we need to keep polling or we would not be able to properly shut down if no further events are received
+                //wait_for_events(instance);
+                thrd_yield();
             }
         }
 
         // if we got here we are reinitializing or stopping and need to reset
         // FIXME: equivalent for XSelectInput needed with xcb?
         //XSelectInput(instance->xcb_conn, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
-        if (use_damage) {
-            xcb_void_cookie = xcb_damage_destroy_checked(instance->xcb_conn, damage);
-            xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
-            if (xcb_err) {
-                FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_destroy_checked failed; X11 error code %hu", xcb_err->error_code);
-                free(xcb_err);
-                xcb_err = NULL;
-            }
-        }
 
         // further resets will be handled for termination, no need to do it twice
         if (instance->stop_generator) {
@@ -964,6 +1173,12 @@ static int generate(void *data) {
     if (attrs) {
         free(attrs);
         attrs = NULL;
+    }
+
+    if (!destroy_damages(instance, &damages)) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances during termination");
+        free_damages_list(damages);
+        damages = NULL;
     }
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread terminated");
