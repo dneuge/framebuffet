@@ -389,18 +389,26 @@ static int generate(void *data) {
     int screen_number = 0;
     xcb_window_t root_window = {0};
     bool root_window_found = false;
+    uint16_t screen_width = 0;
+    uint16_t screen_height = 0;
     int i = 0;
     for (xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_setup); it.rem>0; xcb_screen_next(&it)) {
         i++;
         if (i < screen_number) {
             continue;
         }
+
         xcb_screen_t *screen = it.data;
         if (!screen) {
             break;
         }
+
         root_window = screen->root;
         root_window_found = true;
+
+        screen_width = screen->width_in_pixels;
+        screen_height = screen->height_in_pixels;
+
         break;
     }
     if (!root_window_found) {
@@ -562,6 +570,43 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_composite_redirect_window_checked failed, window may not be accessible while in background; X11 error code %hu", xcb_err->error_code);
             free(xcb_err);
             xcb_err = NULL;
+        }
+
+        // check if the window is (fully) on screen
+        xcb_translate_coordinates_cookie_t translate_coordinates_cookie = xcb_translate_coordinates(instance->xcb_conn, instance->window, root_window, attrs->x, attrs->y);
+        xcb_translate_coordinates_reply_t *translate_coordinates_reply = xcb_translate_coordinates_reply(instance->xcb_conn, translate_coordinates_cookie, &xcb_err);
+        int16_t window_offset_x = 0;
+        int16_t window_offset_y = 0;
+        bool got_translate_coordinates_reply = false;
+        if (translate_coordinates_reply) {
+            got_translate_coordinates_reply = true;
+            // TODO: there also is "same_screen"; is that relevant?
+            window_offset_x = translate_coordinates_reply->dst_x;
+            window_offset_y = translate_coordinates_reply->dst_y;
+            free(translate_coordinates_reply);
+            translate_coordinates_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_translate_coordinates failed; X11 error code %hu", xcb_err->error_code);
+            free(xcb_err);
+            xcb_err = NULL;
+        }
+
+        bool window_fully_rendered = false;
+        if (!got_translate_coordinates_reply) {
+            FBLOG_WARN(instance->ext_instance_ref, "window offset relative to screen is unknown - this may lead to issues accessing window contents");
+        } else {
+            // TODO: we may also have issues if the window has been minimized, check for that as well?
+            int16_t right_edge = attrs->width + window_offset_x;
+            int16_t bottom_edge = attrs->height + window_offset_y;
+            window_fully_rendered = !((window_offset_x < 0) || (window_offset_y < 0) || (right_edge > screen_width) || (bottom_edge > screen_height));
+            FBLOG_DEBUG(instance->ext_instance_ref, "window_fully_rendered=%d (window offset %d/%d, window size %u/%u, edges %d/%d, screen %u/%u)", window_fully_rendered, window_offset_x, window_offset_y, attrs->width, attrs->height, right_edge, bottom_edge, screen_width, screen_height);
+        }
+
+        // SHM can only be used if the window is completely on screen
+        if (use_shm && !window_fully_rendered) {
+            FBLOG_INFO(instance->ext_instance_ref, "SHM cannot be used because window does not get fully rendered (partially off-screen)");
+            use_shm = false;
         }
 
         // create SHM XImage structure
