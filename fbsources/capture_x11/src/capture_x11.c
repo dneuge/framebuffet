@@ -25,6 +25,8 @@
 
 #define WINDOW_NAME_MAX_LENGTH_IN_NUM_QUADS (1024 / 4) /* must be factor to 4, see xcb_get_property documentation */
 
+#define X_BYTES_PER_PIXEL (4) /* API always uses 32 bits per pixel; this does not seem to be flexible */
+
 /* Useful resources for de-mystifying XCB:
  * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
  */
@@ -660,10 +662,9 @@ static int generate(void *data) {
         }
 
         // retrieve a SHM memory segment according to XImage specifications
-        int bytes_per_pixel = 4; // FIXME: get from server ahead of time (visualtype is not yet available from image as we have none - maybe capture once before initializing SHM?)
         ssize_t shm_buffer_size = 0;
         if (use_shm) {
-            shm_buffer_size = bytes_per_pixel * instance->X_image->width * instance->X_image->height;
+            shm_buffer_size = X_BYTES_PER_PIXEL * instance->X_image->width * instance->X_image->height;
             FBLOG_DEBUG(instance->ext_instance_ref, "requesting %lu bytes for SHM buffer", shm_buffer_size);
             instance->shm_info.shmid = shmget(IPC_PRIVATE, shm_buffer_size, IPC_CREAT|0777); // FIXME: verify arguments
             if (instance->shm_info.shmid != -1) {
