@@ -597,8 +597,8 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "window offset relative to screen is unknown - this may lead to issues accessing window contents");
         } else {
             // TODO: we may also have issues if the window has been minimized, check for that as well?
-            int16_t right_edge = attrs->width + window_offset_x;
-            int16_t bottom_edge = attrs->height + window_offset_y;
+            int right_edge = attrs->width + window_offset_x;
+            int bottom_edge = attrs->height + window_offset_y;
             window_fully_rendered = !((window_offset_x < 0) || (window_offset_y < 0) || (right_edge > screen_width) || (bottom_edge > screen_height));
             FBLOG_DEBUG(instance->ext_instance_ref, "window_fully_rendered=%d (window offset %d/%d, window size %u/%u, edges %d/%d, screen %u/%u)", window_fully_rendered, window_offset_x, window_offset_y, attrs->width, attrs->height, right_edge, bottom_edge, screen_width, screen_height);
         }
