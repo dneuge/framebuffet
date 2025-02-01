@@ -643,6 +643,16 @@ static int generate(void *data) {
         const uint8_t blue_shift = calc_shift(blue_mask);
         FBLOG_DEBUG(instance->ext_instance_ref, "visual=%u => mask/shift red 0x%08x>>%hu, green 0x%08x>>%hu, blue 0x%08x>>%hu", xcb_visualtype->visual_id, red_mask, red_shift, green_mask, green_shift, blue_mask, blue_shift);
 
+        // run sanity check on masks
+        uint32_t max_red = (red_mask >> red_shift);
+        uint32_t max_green = (green_mask >> green_shift);
+        uint32_t max_blue = (blue_mask >> blue_shift);
+        if (max_red > 255 || max_green > 255 || max_blue > 255) {
+            FBLOG_WARN(instance->ext_instance_ref, "found unexpected high number of colors per channel (%u/%u/%u) - either color mask is interleaved or HDR is active, neither is currently supported", max_red, max_green, max_blue);
+        } else if (max_red != 255 || max_green != 255 || max_blue != 255) {
+            FBLOG_WARN(instance->ext_instance_ref, "found unexpected number of colors per channel (%u/%u/%u) - display mode may not use full color range which can lead to issues", max_red, max_green, max_blue);
+        }
+
         // create SHM XImage structure
         if (use_shm) {
             FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
