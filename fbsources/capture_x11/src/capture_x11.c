@@ -234,6 +234,12 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
     
     if (success && instance->X_image) {
         FBLOG_DEBUG(instance->ext_instance_ref, "destroying XImage");
+
+        // destroying the image assumes that it owns the attached buffer which is not the case for SHM, "detach" first
+        instance->X_image->base = NULL;
+        instance->X_image->data = NULL;
+        instance->X_image->size = 0;
+
         xcb_image_destroy(instance->X_image);
         instance->X_image = NULL;
     }
@@ -362,7 +368,6 @@ static int generate(void *data) {
     bool use_damage = true;
 
     bool use_shm = instance->allow_shm;
-    use_shm = false; // FIXME: current SHM implementation is horribly wrong, disable until fixed
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
@@ -558,21 +563,32 @@ static int generate(void *data) {
         // create SHM XImage structure
         if (use_shm) {
             FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
-            instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, 0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
-            // FIXME: SHM still needs to be attached at this point - how?!
+            instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit?
             if (!instance->X_image) {
-                FBLOG_WARN(instance->ext_instance_ref, "XShmCreateImage failed, disabling SHM support");
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_image_create failed, disabling SHM support");
+                use_shm = false;
+            }
+        }
+
+        if (use_shm) {
+            instance->shm_info.shmseg = xcb_generate_id(instance->xcb_conn);
+            if (instance->shm_info.shmseg == -1) {
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_generate_id failed to generate ID for xcb_shm_seg_t, disabling SHM support");
                 use_shm = false;
             }
         }
 
         // retrieve a SHM memory segment according to XImage specifications
+        int bytes_per_pixel = 4; // FIXME: get from server ahead of time (visualtype is not yet available from image as we have none - maybe capture once before initializing SHM?)
+        ssize_t shm_buffer_size = 0;
         if (use_shm) {
-            instance->shm_info.shmid = shmget(IPC_PRIVATE, instance->X_image->stride * instance->X_image->height, IPC_CREAT|0777); // FIXME: verify arguments
+            shm_buffer_size = bytes_per_pixel * instance->X_image->width * instance->X_image->height;
+            FBLOG_DEBUG(instance->ext_instance_ref, "requesting %lu bytes for SHM buffer", shm_buffer_size);
+            instance->shm_info.shmid = shmget(IPC_PRIVATE, shm_buffer_size, IPC_CREAT|0777); // FIXME: verify arguments
             if (instance->shm_info.shmid != -1) {
                 instance->shm_assigned = true;
             } else {
-                FBLOG_WARN(instance->ext_instance_ref, "shmget failed (errno %d), disabling SHM support", errno);
+                FBLOG_WARN(instance->ext_instance_ref, "shmget failed (%d %s), disabling SHM support", errno, strerror(errno));
                 use_shm = false;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
@@ -582,12 +598,13 @@ static int generate(void *data) {
 
         // attach this process to the memory segment and set active on XImage if successful
         if (use_shm) {
-            void *shm_addr = shmat(instance->shm_info.shmid, NULL, 0);
+            void *shm_addr = shmat((int) instance->shm_info.shmid, NULL, 0);
             if (shm_addr && (shm_addr != (void*)-1)) {
                 instance->shm_attached_self = true;
                 instance->X_image->data = shm_addr;
+                instance->X_image->base = shm_addr;
+                instance->X_image->size = shm_buffer_size;
                 instance->shm_info.shmaddr = shm_addr;
-                // FIXME: while using Xlib we have explicitly set shm_info.readOnly = false - do we somehow need that here as well?
             } else {
                 // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
                 FBLOG_WARN(instance->ext_instance_ref, "shmat failed (errno %d), disabling SHM support", errno);
@@ -599,11 +616,11 @@ static int generate(void *data) {
         }
 
         // attach the memory segment to X11
-        xcb_shm_seg_t xcb_shm_seg = {0}; // FIXME: where to get this from?
         if (use_shm) {
-            xcb_void_cookie = xcb_shm_attach_checked(instance->xcb_conn, xcb_shm_seg, instance->shm_info.shmid, 0); // FIXME: is read_only correct? is there any constant?
+            xcb_void_cookie = xcb_shm_attach_checked(instance->xcb_conn, instance->shm_info.shmseg, instance->shm_info.shmid, 0); // FIXME: is read_only correct? is there any constant?
             xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
             if (!xcb_err) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_attach_checked succeeded");
                 instance->shm_attached_xserver = true;
             } else {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_attach_checked failed, disabling SHM support; X11 error code %hu", xcb_err->error_code);
@@ -638,13 +655,14 @@ static int generate(void *data) {
                 update_available = false;
                 
                 clock_t benchStart = clock(); // DEBUG
-                // FIXME: format is probably wrong for both SHM and non-SHM calls
                 if (use_shm) {
-                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, 0, 0, attrs->width, attrs->height, 0xFFFFFFFF, format, xcb_shm_seg, 0);
+                    // FIXME: xcb_shm_get_image fails with BadMatch (code 8) if the window is not 100% on screen - detect and disable SHM if not usable, may work when reading back-buffer pixmap instead
+                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     bool got_reply = false;
                     if (shm_get_image_reply) {
                         got_reply = true;
+                        xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, shm_get_image_reply->visual);
                         free(shm_get_image_reply);
                         shm_get_image_reply = NULL;
                     }
@@ -667,7 +685,6 @@ static int generate(void *data) {
                         got_reply = true;
                         xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_image_reply->visual);
                         if (instance->X_image) {
-                            // FIXME: do we need to free the buffer separately?
                             xcb_image_destroy(instance->X_image);
                             instance->X_image = NULL;
                         }
@@ -760,7 +777,7 @@ static int generate(void *data) {
             
                 clock_t benchDone = clock(); // DEBUG
 
-                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished));
+                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f, use_shm=%d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm);
 
                 processed_image = true;
             }
