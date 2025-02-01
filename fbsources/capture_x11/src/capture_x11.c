@@ -361,7 +361,7 @@ static int generate(void *data) {
     xcb_visualtype_t *xcb_visualtype = NULL;
     bool use_damage = true;
 
-    bool use_shm = instance->allow_shm; // TODO: set based on server support
+    bool use_shm = instance->allow_shm;
     use_shm = false; // FIXME: current SHM implementation is horribly wrong, disable until fixed
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
@@ -397,6 +397,28 @@ static int generate(void *data) {
     if (!root_window_found) {
         FBLOG_WARN(instance->ext_instance_ref, "failed to find root window; unable to run");
         return 1;
+    }
+
+    if (use_shm) {
+        xcb_shm_query_version_cookie_t shm_query_version_cookie = xcb_shm_query_version(instance->xcb_conn);
+        xcb_shm_query_version_reply_t *shm_query_version_reply = xcb_shm_query_version_reply(instance->xcb_conn, shm_query_version_cookie, &xcb_err);
+        bool got_shm_query_version_reply = false;
+        if (shm_query_version_reply) {
+            // FIXME: reply contains information about shared pixmaps and pixmap formats, do we need that?
+            got_shm_query_version_reply = true;
+            FBLOG_DEBUG(instance->ext_instance_ref, "SHM extension available, version %u.%u", shm_query_version_reply->major_version, shm_query_version_reply->minor_version);
+            free(shm_query_version_reply);
+            shm_query_version_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_query_version failed, disabling SHM; X11 error code %hu", xcb_err->error_code);
+            use_shm = false;
+            free(xcb_err);
+            xcb_err = NULL;
+        } else if (!got_shm_query_version_reply) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_query_version returned without reply, disabling SHM");
+            use_shm = false;
+        }
     }
 
     xcb_damage_query_version_cookie_t damage_query_version_cookie = xcb_damage_query_version(instance->xcb_conn, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
