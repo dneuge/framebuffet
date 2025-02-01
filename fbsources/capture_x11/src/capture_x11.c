@@ -29,6 +29,9 @@
  * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
  */
 
+// TODO: make system errors readable using strerror
+// TODO: make X11 errors readable using https://gitlab.freedesktop.org/xorg/lib/libxcb-errors
+
 typedef struct {
     mtx_t mutex;
 
@@ -651,11 +654,13 @@ static int generate(void *data) {
                         if (!received) {
                             FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: xcb_get_image_data returned NULL");
                         } else {
-                            void *buffer = malloc(received_len);
+                            void *buffer = malloc(received_len); // TODO: retain and reallocate only when larger buffer is needed
                             if (!buffer) {
                                 FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %d bytes to copy received image buffer", received_len);
                             } else {
+                                // FIXME: we may not actually need a separate buffer
                                 memcpy(buffer, received, received_len);
+                                // FIXME: we don't actually need an image instance, attributes and format are known and we have the buffer already - remove if not needed for sharing implementation with SHM
                                 instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
                             }
                         }
