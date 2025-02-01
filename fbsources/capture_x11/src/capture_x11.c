@@ -259,17 +259,21 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
         }
     }
 
-    if (success && instance->shm_assigned) {
-        FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment");
-        res = shmctl(instance->shm_info.shmid, IPC_RMID, NULL);
-        if (res == 0) {
-            instance->shm_assigned = false;
-        } else if (res == -1) {
-            FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment failed (errno %d)", errno);
-            success = false;
+    if (success) {
+        if (instance->shm_assigned) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "SHM segment has already been released");
         } else {
-            FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment returned undefined result (%d), assuming failed", res);
-            success = false;
+            FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment (late)");
+            res = shmctl((int) instance->shm_info.shmid, IPC_RMID, NULL);
+            if (res == 0) {
+                instance->shm_assigned = false;
+            } else if (res == -1) {
+                FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment failed (errno %d)", errno);
+                success = false;
+            } else {
+                FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment returned undefined result (%d), assuming failed", res);
+                success = false;
+            }
         }
     }
 
@@ -612,6 +616,19 @@ static int generate(void *data) {
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
+            }
+
+            // Releasing the SHM segment immediately after attaching to it allows the system to clean up the segment
+            // in case this process crashes, otherwise it would be left over until manually removed or the system gets
+            // rebooted.
+            FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment (early)");
+            res = shmctl((int) instance->shm_info.shmid, IPC_RMID, NULL);
+            if (res == 0) {
+                instance->shm_assigned = false;
+            } else if (res == -1) {
+                FBLOG_WARN(instance->ext_instance_ref, "early release of SHM segment failed, segment may remain reserved if this process crashes (errno %d)", errno);
+            } else {
+                FBLOG_WARN(instance->ext_instance_ref, "early release of SHM segment returned undefined result (%d), segment may remain reserved if this process crashes", res);
             }
         }
 
