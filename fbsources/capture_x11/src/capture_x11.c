@@ -609,6 +609,38 @@ static int generate(void *data) {
             use_shm = false;
         }
 
+        // get additional window attributes
+        xcb_visualtype = NULL; // do not free; pointers returned by XCB seem to be constants, although not declared as such
+        xcb_get_window_attributes_cookie_t get_window_attributes_cookie = xcb_get_window_attributes(instance->xcb_conn, instance->window);
+        xcb_get_window_attributes_reply_t *get_window_attributes_reply = xcb_get_window_attributes_reply(instance->xcb_conn, get_window_attributes_cookie, &xcb_err);
+        bool got_get_window_attributes_reply = false;
+        if (get_window_attributes_reply) {
+            got_get_window_attributes_reply = true;
+            xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_window_attributes_reply->visual);
+            free(get_window_attributes_reply);
+            get_window_attributes_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_get_window_attributes failed; X11 error code %hu", xcb_err->error_code);
+            free(xcb_err);
+            xcb_err = NULL;
+        } else if (!got_get_window_attributes_reply) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_get_window_attributes failed without X11 error code");
+        }
+
+        // compute mask and shifts for color conversion (constant for optimization)
+        if (!xcb_visualtype) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_visualtype is unknown");
+            break;
+        }
+        const uint32_t red_mask = xcb_visualtype->red_mask;
+        const uint32_t green_mask = xcb_visualtype->green_mask;
+        const uint32_t blue_mask = xcb_visualtype->blue_mask;
+        const uint8_t red_shift = calc_shift(red_mask);
+        const uint8_t green_shift = calc_shift(green_mask);
+        const uint8_t blue_shift = calc_shift(blue_mask);
+        FBLOG_DEBUG(instance->ext_instance_ref, "visual=%u => mask/shift red 0x%08x>>%hu, green 0x%08x>>%hu, blue 0x%08x>>%hu", xcb_visualtype->visual_id, red_mask, red_shift, green_mask, green_shift, blue_mask, blue_shift);
+
         // create SHM XImage structure
         if (use_shm) {
             FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
@@ -715,15 +747,16 @@ static int generate(void *data) {
         while (!instance->stop_generator) {
             if (!use_damage || update_available) {
                 update_available = false;
-                
+                bool visual_changed = false;
+
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
                     xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     bool got_reply = false;
-                    if (shm_get_image_reply) {
+                    if (shm_get_image_reply && !xcb_err) {
                         got_reply = true;
-                        xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, shm_get_image_reply->visual);
+                        visual_changed = (xcb_visualtype->visual_id != shm_get_image_reply->visual);
                         free(shm_get_image_reply);
                         shm_get_image_reply = NULL;
                     }
@@ -741,10 +774,9 @@ static int generate(void *data) {
                     xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     bool got_reply = false;
-                    if (get_image_reply)
-                    {
+                    if (get_image_reply && !xcb_err) {
                         got_reply = true;
-                        xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_image_reply->visual);
+                        visual_changed = (xcb_visualtype->visual_id != get_image_reply->visual);
                         if (instance->X_image) {
                             xcb_image_destroy(instance->X_image);
                             instance->X_image = NULL;
@@ -785,23 +817,14 @@ static int generate(void *data) {
                 }
                 clock_t benchGotImage = clock(); // DEBUG
 
-                int work_buffer = (instance->complete_buffer + 1) % 2;
-                uint32_t *in = (uint32_t*) instance->X_image->data;
-                unsigned char *out = instance->buffers[work_buffer];
-
-                // TODO: cache shifts, recompute only when xcb_visualtype changes
-                int red_shift = calc_shift(xcb_visualtype->red_mask);
-                int green_shift = calc_shift(xcb_visualtype->green_mask);
-                int blue_shift = calc_shift(xcb_visualtype->blue_mask);
-
-                if (!xcb_visualtype) {
-                    FBLOG_WARN(instance->ext_instance_ref, "xcb_visualtype is unknown");
+                if (visual_changed) {
+                    FBLOG_WARN(instance->ext_instance_ref, "visual type changed; conversion is not possible, reinitializing...");
                     break;
                 }
 
-                const uint32_t red_mask = xcb_visualtype->red_mask;
-                const uint32_t green_mask = xcb_visualtype->green_mask;
-                const uint32_t blue_mask = xcb_visualtype->blue_mask;
+                int work_buffer = (instance->complete_buffer + 1) % 2;
+                uint32_t *in = (uint32_t*) instance->X_image->data;
+                unsigned char *out = instance->buffers[work_buffer];
 
                 const uint32_t *end = in + (attrs->height * attrs->width);
                 while (in < end) {
