@@ -637,7 +637,7 @@ static int generate(void *data) {
                         break;
                     }
                 } else {
-                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, 0, 0, attrs->width, attrs->height, 0xFFFFFFFF);
+                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     bool got_reply = false;
                     if (get_image_reply)
