@@ -718,7 +718,6 @@ static int generate(void *data) {
                 
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
-                    // FIXME: xcb_shm_get_image fails with BadMatch (code 8) if the window is not 100% on screen - detect and disable SHM if not usable, may work when reading back-buffer pixmap instead
                     xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     bool got_reply = false;
