@@ -29,6 +29,7 @@
 
 /* Useful resources for de-mystifying XCB:
  * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
+ * https://xcb.freedesktop.org/tutorial/events/
  */
 
 // TODO: make system errors readable using strerror
@@ -939,8 +940,14 @@ static int generate(void *data) {
         }
 
         // listen for events
-        // FIXME: equivalent of XSelectInput for xcb?
-        //XSelectInput(instance->xcb_conn, instance->window, StructureNotifyMask);
+        uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+        xcb_void_cookie = xcb_change_window_attributes_checked(instance->xcb_conn, instance->window, XCB_CW_EVENT_MASK, &subscribe_event_mask_values);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to subscribe to window changes; changes in size will not be detected");
+            free(xcb_err);
+            xcb_err = NULL;
+        }
         if (!destroy_damages(instance, &damages)) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances on reconfiguration");
             free_damages_list(damages);
@@ -1084,40 +1091,40 @@ static int generate(void *data) {
             while ((event = xcb_poll_for_queued_event(instance->xcb_conn)) != NULL) {
                 uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
                 FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
-                if (use_damage && event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
-                    xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "XDamage notification received for 0x%08x", e->drawable);
-                    update_available = true;
-                    xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
-                    xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
-                    if (xcb_err) {
-                        FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
-                        use_damage = false;
-                        if (!destroy_damages(instance, &damages)) {
-                            FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances");
+                if (event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
+                    // just ignore in case we stopped using damage but events keep coming in
+                    if (use_damage) {
+                        xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "XDamage notification received for 0x%08x", e->drawable);
+                        update_available = true;
+                        xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
+                        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+                        if (xcb_err) {
+                            FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
+                            use_damage = false;
+                            if (!destroy_damages(instance, &damages)) {
+                                FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances");
+                            }
+                            free(xcb_err);
+                            xcb_err = NULL;
                         }
-                        free(xcb_err);
-                        xcb_err = NULL;
                     }
+                } else if (event_type == XCB_CONFIGURE_NOTIFY) {
+                    xcb_configure_notify_event_t *e = (xcb_configure_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Configure notification received for 0x%08x", e->window);
+                    if ((e->window == instance->window) && ((e->width != attrs->width) || (e->height != attrs->height))) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", attrs->width, attrs->height, e->width, e->height);
+                        size_changed = true;
+                        continue;
+                    }
+                } else {
+                    FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x", event->response_type);
                 }
 
                 free(event);
                 event = NULL;
             }
 
-
-            // FIXME: reimplement with xcb
-            /*
-                } else if (event.type == ConfigureNotify) {
-                    XConfigureEvent *e = (XConfigureEvent*) &event;
-                    if ((e->window == instance->window) && ((e->width != attrs->width) || (e->height != attrs->height))) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "XConfigureEvent indicates size has changed from %dx%d to %dx%d", attrs->width, attrs->height, e->width, e->height);
-                        size_changed = true;
-                        continue;
-                    }
-                }
-            }
-            */
             if (size_changed) {
                 FBLOG_INFO(instance->ext_instance_ref, "window size changed, reinitializing");
                 break;
@@ -1130,8 +1137,14 @@ static int generate(void *data) {
         }
 
         // if we got here we are reinitializing or stopping and need to reset
-        // FIXME: equivalent for XSelectInput needed with xcb?
-        //XSelectInput(instance->xcb_conn, instance->window, 0); // TODO: check if removing the listener really works this way (I suspect it does but it is not mentioned in docs and yields no search results)
+        uint32_t unsubscribe_event_mask_values[] = { XCB_NONE }; // TODO: check if removing the listener really works this way (taken over from our Xlib implementation where I wasn't sure either)
+        xcb_void_cookie = xcb_change_window_attributes_checked(instance->xcb_conn, instance->window, XCB_CW_EVENT_MASK, &unsubscribe_event_mask_values);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to unsubscribe from window changes");
+            free(xcb_err);
+            xcb_err = NULL;
+        }
 
         // further resets will be handled for termination, no need to do it twice
         if (instance->stop_generator) {
