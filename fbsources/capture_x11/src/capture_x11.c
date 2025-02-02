@@ -840,6 +840,10 @@ static int generate(void *data) {
         // create SHM XImage structure
         if (use_shm) {
             FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
+            if (instance->X_image) {
+                // FIXME: investigate paths/test with enabled SHM to check if this actually happens on reinitialization
+                FBLOG_ERROR(instance->ext_instance_ref, "MEMLEAK - 'create SHM XImage structure'");
+            }
             instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit?
             if (!instance->X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_image_create failed, disabling SHM support");
