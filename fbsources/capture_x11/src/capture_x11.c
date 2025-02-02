@@ -583,7 +583,7 @@ static int generate(void *data) {
         }
     }
 
-    const char *damage_extension_name = "DAMAGE";
+    const char damage_extension_name[] = "DAMAGE";
     xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
     xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
     if (query_extension_reply && !xcb_err) {
