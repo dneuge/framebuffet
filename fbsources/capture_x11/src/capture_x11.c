@@ -1111,7 +1111,6 @@ static int generate(void *data) {
                     if ((e->window == instance->window) && ((e->width != geom->width) || (e->height != geom->height))) {
                         FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", geom->width, geom->height, e->width, e->height);
                         size_changed = true;
-                        continue;
                     }
                 } else {
                     FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x", event->response_type);
