@@ -965,7 +965,7 @@ static int generate(void *data) {
                     xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     if (shm_get_image_reply && !xcb_err) {
-                        visual_changed = (xcb_visualtype->visual_id != shm_get_image_reply->visual);
+                        visual_changed = shm_get_image_reply->visual && (xcb_visualtype->visual_id != shm_get_image_reply->visual);
                     }
                     bool got_reply = false;
                     if (shm_get_image_reply) {
@@ -990,7 +990,7 @@ static int generate(void *data) {
                     xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
-                        visual_changed = (xcb_visualtype->visual_id != get_image_reply->visual);
+                        visual_changed = get_image_reply->visual && (xcb_visualtype->visual_id != get_image_reply->visual);
                         uint8_t *received = xcb_get_image_data(get_image_reply);
                         int received_len = xcb_get_image_data_length(get_image_reply);
                         if (!received) {
