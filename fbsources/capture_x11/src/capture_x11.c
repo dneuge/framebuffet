@@ -416,9 +416,7 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
     damage_list_item_t *item = head_item;
     xcb_query_tree_cookie_t query_tree_cookie = xcb_query_tree(instance->xcb_conn, drawable);
     xcb_query_tree_reply_t *query_tree_reply = xcb_query_tree_reply(instance->xcb_conn, query_tree_cookie, &xcb_err);
-    bool got_query_tree_reply = false;
     if (query_tree_reply && !xcb_err) {
-        got_query_tree_reply = true;
         int num_child_windows = xcb_query_tree_children_length(query_tree_reply);
         FBLOG_TRACE(instance->ext_instance_ref, "[create_damages] registering damage for %d child windows", num_child_windows);
         xcb_window_t *windows = xcb_query_tree_children(query_tree_reply);
@@ -428,14 +426,14 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
             xcb_generic_error_t *xcb_inner_err = NULL;
             xcb_get_window_attributes_cookie_t get_window_attributes_cookie = xcb_get_window_attributes(instance->xcb_conn, window);
             xcb_get_window_attributes_reply_t *get_window_attributes_reply = xcb_get_window_attributes_reply(instance->xcb_conn, get_window_attributes_cookie, &xcb_inner_err);
-            bool got_get_window_attributes_reply = false;
             bool window_has_no_output = false;
             if (get_window_attributes_reply && !xcb_inner_err) {
-                got_get_window_attributes_reply = true;
                 // NOTE: the underscore on _class probably indicates a private field but there appears to be no other way to get that information
                 window_has_no_output = (get_window_attributes_reply->_class == XCB_WINDOW_CLASS_INPUT_ONLY);
             }
+            bool got_get_window_attributes_reply = false;
             if (get_window_attributes_reply) {
+                got_get_window_attributes_reply = true;
                 free(get_window_attributes_reply);
                 get_window_attributes_reply = NULL;
             }
@@ -467,6 +465,10 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
                 item = item->next;
             }
         }
+    }
+    bool got_query_tree_reply = false;
+    if (query_tree_reply) {
+        got_query_tree_reply = true;
         free(query_tree_reply);
         query_tree_reply = NULL;
     }
@@ -556,14 +558,17 @@ static int generate(void *data) {
         return 1;
     }
 
+    // check if SHM is available and disable if not
     if (use_shm) {
         xcb_shm_query_version_cookie_t shm_query_version_cookie = xcb_shm_query_version(instance->xcb_conn);
         xcb_shm_query_version_reply_t *shm_query_version_reply = xcb_shm_query_version_reply(instance->xcb_conn, shm_query_version_cookie, &xcb_err);
+        if (shm_query_version_reply && !xcb_err) {
+            // FIXME: reply contains information about shared pixmaps and pixmap formats, do we need that?
+            FBLOG_DEBUG(instance->ext_instance_ref, "SHM extension available, version %u.%u", shm_query_version_reply->major_version, shm_query_version_reply->minor_version);
+        }
         bool got_shm_query_version_reply = false;
         if (shm_query_version_reply) {
-            // FIXME: reply contains information about shared pixmaps and pixmap formats, do we need that?
             got_shm_query_version_reply = true;
-            FBLOG_DEBUG(instance->ext_instance_ref, "SHM extension available, version %u.%u", shm_query_version_reply->major_version, shm_query_version_reply->minor_version);
             free(shm_query_version_reply);
             shm_query_version_reply = NULL;
         }
@@ -581,14 +586,16 @@ static int generate(void *data) {
     const char *damage_extension_name = "DAMAGE";
     xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
     xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
-    bool got_query_extension_reply = false;
     if (query_extension_reply && !xcb_err) {
-        got_query_extension_reply = true;
         damage_event_base = query_extension_reply->first_event;
         if (!query_extension_reply->present) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
             use_damage = false;
         }
+    }
+    bool got_query_extension_reply = false;
+    if (query_extension_reply) {
+        got_query_extension_reply = true;
         free(query_extension_reply);
         query_extension_reply = NULL;
     }
@@ -605,15 +612,17 @@ static int generate(void *data) {
     if (use_damage) {
         xcb_damage_query_version_cookie_t damage_query_version_cookie = xcb_damage_query_version(instance->xcb_conn, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
         xcb_damage_query_version_reply_t *damage_query_version_reply = xcb_damage_query_version_reply(instance->xcb_conn, damage_query_version_cookie, &xcb_err);
-        bool got_damage_query_version_reply = false;
-        if (damage_query_version_reply) {
-            got_damage_query_version_reply = true;
+        if (damage_query_version_reply && !xcb_err) {
             if ((damage_query_version_reply->major_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_query_version_reply->major_version == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_query_version_reply->minor_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
                 FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
                 use_damage = false;
             } else if ((damage_query_version_reply->major_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_query_version_reply->minor_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
                 FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
             }
+        }
+        bool got_damage_query_version_reply = false;
+        if (damage_query_version_reply) {
+            got_damage_query_version_reply = true;
             free(damage_query_version_reply);
             damage_query_version_reply = NULL;
         }
@@ -622,8 +631,7 @@ static int generate(void *data) {
             use_damage = false;
             free(xcb_err);
             xcb_err = NULL;
-        }
-        if (!got_damage_query_version_reply) {
+        } else if (!got_damage_query_version_reply) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version returned no reply, disabling");
             use_damage = false;
         }
@@ -653,16 +661,7 @@ static int generate(void *data) {
 
                 xcb_get_geometry_cookie_t geometry_cookie = xcb_get_geometry(instance->xcb_conn, instance->window);
                 attrs = xcb_get_geometry_reply(instance->xcb_conn, geometry_cookie, &xcb_err);
-                if (xcb_err || !attrs) {
-                    if (xcb_err) {
-                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, attrs=%p", instance->window, xcb_err->error_code, attrs);
-                        free(xcb_err);
-                        xcb_err = NULL;
-                    } else {
-                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, attrs=%p", instance->window, attrs);
-                    }
-                    success = false;
-                } else {
+                if (attrs && !xcb_err) {
                     // check window attributes
                     if (attrs->depth != 24) {
                         FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", attrs->depth, instance->window);
@@ -678,6 +677,21 @@ static int generate(void *data) {
                         FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", attrs->height, instance->window);
                         success = false;
                     }
+                }
+                if (xcb_err) {
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, attrs=%p", instance->window, xcb_err->error_code, attrs);
+                    success = false;
+                    free(xcb_err);
+                    xcb_err = NULL;
+
+                    // prevent accidental use of invalid reply
+                    if (attrs) {
+                        free(attrs);
+                        attrs = NULL;
+                    }
+                } else if (!attrs) {
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, attrs=%p", instance->window, attrs);
+                    success = false;
                 }
             }
             
@@ -741,12 +755,16 @@ static int generate(void *data) {
         xcb_translate_coordinates_reply_t *translate_coordinates_reply = xcb_translate_coordinates_reply(instance->xcb_conn, translate_coordinates_cookie, &xcb_err);
         int16_t window_offset_x = 0;
         int16_t window_offset_y = 0;
-        bool got_translate_coordinates_reply = false;
-        if (translate_coordinates_reply) {
-            got_translate_coordinates_reply = true;
+        bool offset_known = false;
+        if (translate_coordinates_reply && !xcb_err) {
             // TODO: there also is "same_screen"; is that relevant?
             window_offset_x = translate_coordinates_reply->dst_x;
             window_offset_y = translate_coordinates_reply->dst_y;
+            offset_known = true;
+        }
+        bool got_translate_coordinates_reply = false;
+        if (translate_coordinates_reply) {
+            got_translate_coordinates_reply = true;
             free(translate_coordinates_reply);
             translate_coordinates_reply = NULL;
         }
@@ -754,10 +772,12 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_translate_coordinates failed; X11 error code %hu", xcb_err->error_code);
             free(xcb_err);
             xcb_err = NULL;
+        } else if (!got_translate_coordinates_reply) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_translate_coordinates failed without X11 error code");
         }
 
         bool window_fully_rendered = false;
-        if (!got_translate_coordinates_reply) {
+        if (!offset_known) {
             FBLOG_WARN(instance->ext_instance_ref, "window offset relative to screen is unknown - this may lead to issues accessing window contents");
         } else {
             // TODO: we may also have issues if the window has been minimized, check for that as well?
@@ -777,10 +797,12 @@ static int generate(void *data) {
         xcb_visualtype = NULL; // do not free; pointers returned by XCB seem to be constants, although not declared as such
         xcb_get_window_attributes_cookie_t get_window_attributes_cookie = xcb_get_window_attributes(instance->xcb_conn, instance->window);
         xcb_get_window_attributes_reply_t *get_window_attributes_reply = xcb_get_window_attributes_reply(instance->xcb_conn, get_window_attributes_cookie, &xcb_err);
+        if (get_window_attributes_reply && !xcb_err) {
+            xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_window_attributes_reply->visual);
+        }
         bool got_get_window_attributes_reply = false;
         if (get_window_attributes_reply) {
             got_get_window_attributes_reply = true;
-            xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_window_attributes_reply->visual);
             free(get_window_attributes_reply);
             get_window_attributes_reply = NULL;
         }
@@ -938,10 +960,12 @@ static int generate(void *data) {
                 if (use_shm) {
                     xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
-                    bool got_reply = false;
                     if (shm_get_image_reply && !xcb_err) {
-                        got_reply = true;
                         visual_changed = (xcb_visualtype->visual_id != shm_get_image_reply->visual);
+                    }
+                    bool got_reply = false;
+                    if (shm_get_image_reply) {
+                        got_reply = true;
                         free(shm_get_image_reply);
                         shm_get_image_reply = NULL;
                     }
@@ -950,17 +974,14 @@ static int generate(void *data) {
                         free(xcb_err);
                         xcb_err = NULL;
                         break;
-                    }
-                    if (!got_reply) {
+                    } else if (!got_reply) {
                         FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_get_image failed without X11 error code");
                         break;
                     }
                 } else {
                     xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
-                    bool got_reply = false;
                     if (get_image_reply && !xcb_err) {
-                        got_reply = true;
                         visual_changed = (xcb_visualtype->visual_id != get_image_reply->visual);
                         if (instance->X_image) {
                             xcb_image_destroy(instance->X_image);
@@ -982,6 +1003,10 @@ static int generate(void *data) {
                             }
                         }
                         // FIXME: do we need to also free the reply's image data?
+                    }
+                    bool got_reply = false;
+                    if (get_image_reply) {
+                        got_reply = true;
                         free(get_image_reply);
                         get_image_reply = NULL;
                     }
@@ -990,11 +1015,11 @@ static int generate(void *data) {
                         free(xcb_err);
                         xcb_err = NULL;
                         break;
-                    }
-                    if (!got_reply) {
+                    } else if (!got_reply) {
                         FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed without X11 error code");
                         break;
                     }
+
                     if (!instance->X_image) {
                         FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: no image received");
                         break;
