@@ -269,7 +269,7 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
     }
 
     if (success) {
-        if (instance->shm_assigned) {
+        if (!instance->shm_assigned) {
             FBLOG_DEBUG(instance->ext_instance_ref, "SHM segment has already been released");
         } else {
             FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment (late)");
