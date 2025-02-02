@@ -961,7 +961,7 @@ static int generate(void *data) {
         }
 
         // listen for events
-        uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT };
+        uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY };
         xcb_void_cookie = xcb_change_window_attributes_checked(instance->xcb_conn, instance->window, XCB_CW_EVENT_MASK, &subscribe_event_mask_values);
         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
         if (xcb_err) {
@@ -1151,11 +1151,25 @@ static int generate(void *data) {
                     xcb_map_notify_event_t *e = (xcb_map_notify_event_t*) event;
                     FBLOG_TRACE(instance->ext_instance_ref, "Map notification received for 0x%08x", e->window);
                     if (e->window == instance->window) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (compositing toggled on/off?); reinitialization needed");
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (mapped; compositing toggled on/off?); reinitialization needed");
+                        window_configuration_changed = true;
+                    }
+                } else if (event_type == XCB_UNMAP_NOTIFY) {
+                    xcb_unmap_notify_event_t *e = (xcb_unmap_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Unmap notification received for 0x%08x", e->window);
+                    if (e->window == instance->window) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (unmapped; compositing toggled on/off?); reinitialization needed");
+                        window_configuration_changed = true;
+                    }
+                } else if (event_type == XCB_DESTROY_NOTIFY) {
+                    xcb_destroy_notify_event_t *e = (xcb_destroy_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Destroy notification received for 0x%08x", e->window);
+                    if (e->window == instance->window) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "window has been destroyed; reinitialization needed");
                         window_configuration_changed = true;
                     }
                 } else {
-                    FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x", event->response_type);
+                    FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x (%hu)", event->response_type, event->response_type);
                 }
 
                 free(event);
