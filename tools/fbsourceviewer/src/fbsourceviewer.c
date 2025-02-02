@@ -87,6 +87,27 @@ static void log_receiver(fblog_level_t level, char *message) {
     log_msg(buffer);
 }
 
+static void flip_y(char **buffer, uint16_t line_length, uint16_t rows) {
+    if (!buffer || !*buffer) {
+        return;
+    }
+
+    const size_t total_size = line_length * rows;
+    char *new_buffer = malloc(total_size);
+
+    char *out = new_buffer;
+    char *in = (*buffer) + total_size - line_length;
+    const char *in_min = *buffer;
+    while (in >= in_min) {
+        memcpy(out, in, line_length);
+        out += line_length;
+        in -= line_length;
+    }
+
+    free(*buffer);
+    *buffer = new_buffer;
+}
+
 int main(int argc, char *argv[]) {
     int res;
 
@@ -99,16 +120,17 @@ int main(int argc, char *argv[]) {
     framebuffet_provide_log_receiver(framebuffet, log_receiver);
     framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_TRACE);
 
-    if (argc < 5) {
-        printf("Call with config file, source ID and buffer ID to display and module paths.\n");
+    if (argc < 6) {
+        printf("Call with config file, source ID and buffer ID to display, flipY flag (0/1) and module paths.\n");
         return 1;
     }
 
     char *config_path = argv[1];
     char *source_id = argv[2];
     int buffer_id = atoi(argv[3]);
-  
-    for (int i=4; i<argc; i++) {
+    bool should_flip_y = (atoi(argv[4]) == 1);
+
+    for (int i=5; i<argc; i++) {
         printf("loading %s\n", argv[i]);
         res = framebuffet_load_module(framebuffet, argv[i]);
         if (res != FBERROR_NONE) {
@@ -125,7 +147,7 @@ int main(int argc, char *argv[]) {
 
     printf("source ID: %s\n", source_id);
     printf("buffer ID: %d\n", buffer_id);
-  
+
     int width = 2048;
     int height = 2048;
 
@@ -142,7 +164,7 @@ int main(int argc, char *argv[]) {
     fbcollections_map_entry_t *config = fbcollections_map_create();
     config_put_uint(config, "width", width);
     config_put_uint(config, "height", height);
-  
+
     printf("configuring source instance\n");
     res = framebuffet_configure_source_instance(source, config);
     if (res != FBERROR_NONE) {
@@ -159,7 +181,7 @@ int main(int argc, char *argv[]) {
         printf("no source named %s", source_id);
         return 1;
     }
-  
+
     printf("querying FB config for buffer %d", buffer_id);
     fbsource_buffer_config_t fb_config;
     while (1) {
@@ -174,9 +196,9 @@ int main(int argc, char *argv[]) {
         sleep_millis(250);
     }
     printf("\n");
-  
+
     unsigned long buffer_size = fb_config.size;
-  
+
     printf("allocating buffer, size=%ld\n", buffer_size);
     unsigned char *buffer = (unsigned char*) malloc(buffer_size);
     if (!buffer) {
@@ -188,14 +210,15 @@ int main(int argc, char *argv[]) {
     // create SDL window
     printf("initializing SDL\n");
     SDL_Init(SDL_INIT_VIDEO);
-  
+
     printf("SDL initialized, creating window\n");
-    SDL_Window *window = SDL_CreateWindow("FBSourceViewer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_SHOWN);
+    const char *window_title = should_flip_y ? "FBSourceViewer [flipY]" : "FBSourceViewer";
+    SDL_Window *window = SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_SHOWN);
     if (!window) {
         printf("Failed to open SDL window\n");
         return 1;
     }
-  
+
     printf("window created, retrieving surface\n");
     SDL_Surface *window_surface = SDL_GetWindowSurface( window );
     if (!window_surface) {
@@ -203,12 +226,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     printf("surface retrieved\n");
-  
+
     int frames_received = 0;
     unsigned int token = 0;
     while (1) {
         sleep_millis(10);
- 
+
         // check if window has been closed
         int shutdown = 0;
         SDL_Event event;
@@ -237,6 +260,11 @@ int main(int argc, char *argv[]) {
         if (res) {
             printf("error %d\n", res);
             continue;
+        }
+
+        // flip?
+        if (should_flip_y) {
+            flip_y(&buffer, width * 3, height);
         }
 
         // update window
