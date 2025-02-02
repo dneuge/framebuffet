@@ -299,55 +299,6 @@ static void clear_connection_fd_set(fbsource_capture_x11_t *instance) {
     FD_ZERO(&instance->connection_fd_set);
 }
 
-static void add_connection_fd_set(fbsource_capture_x11_t *instance, int fd) {
-    FBLOG_DEBUG(instance->ext_instance_ref, "adding X11 connection file descriptor %d to wait FD set", fd);
-    
-    FD_SET(fd, &instance->connection_fd_set);
-    if (fd >= instance->connection_fd_stop_excl) {
-        instance->connection_fd_stop_excl = fd + 1;
-    }
-    instance->connection_fd_set_count++;
-}
-
-static void init_connection_fd_set(fbsource_capture_x11_t *instance) {
-    // FIXME: this should hopefully no longer be necessary with xcb? (was needed for event handling)
-    /*
-    clear_connection_fd_set(instance);
-    add_connection_fd_set(instance, XConnectionNumber(instance->xcb_conn));
-    */
-}
-
-static void wait_for_events(fbsource_capture_x11_t *instance) {
-    bool success = instance->connection_fd_set_count > 0;
-    if (success) {
-        struct timeval timeout = wait_for_events_timeout; // timeout must be copied as it will be modified by select
-        int res = select(instance->connection_fd_stop_excl, &instance->connection_fd_set, NULL, NULL, &timeout);
-        
-        // select returns -1 on error, 0 on timeout, positive integer = total count of descriptors
-        if (res < 0) {
-            success = false;
-            
-            // expected errors in errno according to documentation are:
-            //
-            //   EBADF  in case of bad file descriptors (closed or erroneous)
-            //   EINVAL in case of invalid parameters
-            //   ENOMEM in case of memory allocation error
-            //   EINTR  if interrupted by a signal
-            //
-            // except for EINTR all these errors sound like they would be final, so we can stop trying
-            if (errno != EINTR) {
-                FBLOG_WARN(instance->ext_instance_ref, "waiting for X11 events failed with %d, disabling", errno);
-                clear_connection_fd_set(instance);
-            }
-        }
-    }
-
-    // yield instead if we were unable to wait this time
-    if (!success) {
-        thrd_yield();
-    }
-}
-
 static uint8_t calc_shift(uint32_t mask) {
     if (!mask) {
         return 0;
@@ -549,8 +500,6 @@ static int generate(void *data) {
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
     fbutil_set_current_thread_name("FBCapX/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
-
-    init_connection_fd_set(instance);
 
     const xcb_setup_t *xcb_setup = xcb_get_setup(instance->xcb_conn);
     if (!xcb_setup) {
@@ -1372,14 +1321,6 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
             success = false;
         }
     }
-
-    /*
-    // disconnect from X server if failed
-    if (!success && instance->display) {
-        xcb_disconnect(instance->display);
-        instance->display = NULL;
-    }
-    */
 
     mtx_unlock(&instance->mutex);
     
