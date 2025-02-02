@@ -30,6 +30,11 @@
 /* Useful resources for de-mystifying XCB:
  * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
  * https://xcb.freedesktop.org/tutorial/events/
+ *
+ * Description of what needs to be done to correctly access Composite-redirected windows: (written for Xlib)
+ *   https://web.archive.org/web/20240806120127/http://www.talisman.org/~erlkonig/misc/x11-composite-tutorial/
+ * which is now also unavailable and originally recovered
+ *   https://web.archive.org/web/20101223183042/http://ktown.kde.org/~fredrik/composite_howto.html
  */
 
 // TODO: make system errors readable using strerror
@@ -750,6 +755,29 @@ static int generate(void *data) {
             xcb_err = NULL;
         }
 
+        // Composite redirection switches window rendering to a back-buffer pixmap which is what we should read from.
+        // If we keep reading from the window, we loose most benefits of window redirection, such as the ability to
+        // read oversize windows from shared memory.
+        xcb_drawable_t source_drawable = instance->window;
+        bool back_buffer_pixmap_available = false;
+        xcb_pixmap_t back_buffer_pixmap = -1;
+        if (instance->redirected_window) {
+            back_buffer_pixmap = xcb_generate_id(instance->xcb_conn);
+            if (back_buffer_pixmap == -1) {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to allocate ID for back-buffer pixmap");
+            } else {
+                xcb_void_cookie = xcb_composite_name_window_pixmap_checked(instance->xcb_conn, instance->window, back_buffer_pixmap);
+                xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+                if (!xcb_err) {
+                    FBLOG_DEBUG(instance->ext_instance_ref, "back-buffer pixmap is available");
+                    back_buffer_pixmap_available = true;
+                    source_drawable = back_buffer_pixmap;
+                } else {
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_composite_name_window_pixmap_checked failed, back-buffer pixmap unavailable; X11 error code %hu", xcb_err->error_code);
+                }
+            }
+        }
+
         // check if the window is (fully) on screen
         xcb_translate_coordinates_cookie_t translate_coordinates_cookie = xcb_translate_coordinates(instance->xcb_conn, instance->window, root_window, geom->x, geom->y);
         xcb_translate_coordinates_reply_t *translate_coordinates_reply = xcb_translate_coordinates_reply(instance->xcb_conn, translate_coordinates_cookie, &xcb_err);
@@ -787,8 +815,8 @@ static int generate(void *data) {
             FBLOG_DEBUG(instance->ext_instance_ref, "window_fully_rendered=%d (window offset %d/%d, window size %u/%u, edges %d/%d, screen %u/%u)", window_fully_rendered, window_offset_x, window_offset_y, geom->width, geom->height, right_edge, bottom_edge, screen_width, screen_height);
         }
 
-        // SHM can only be used if the window is completely on screen
-        if (use_shm && !window_fully_rendered) {
+        // unless we read from the backing pixmap, SHM can only be used if the window is completely on screen
+        if (use_shm && (!window_fully_rendered && !back_buffer_pixmap_available)) {
             FBLOG_INFO(instance->ext_instance_ref, "SHM cannot be used because window does not get fully rendered (partially off-screen)");
             use_shm = false;
         }
@@ -933,7 +961,7 @@ static int generate(void *data) {
         }
 
         // listen for events
-        uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+        uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT };
         xcb_void_cookie = xcb_change_window_attributes_checked(instance->xcb_conn, instance->window, XCB_CW_EVENT_MASK, &subscribe_event_mask_values);
         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
         if (xcb_err) {
@@ -962,7 +990,7 @@ static int generate(void *data) {
 
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
-                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
+                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, source_drawable, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     if (shm_get_image_reply && !xcb_err) {
                         visual_changed = shm_get_image_reply->visual && (xcb_visualtype->visual_id != shm_get_image_reply->visual);
@@ -987,7 +1015,7 @@ static int generate(void *data) {
                         xcb_image_destroy(instance->X_image);
                         instance->X_image = NULL;
                     }
-                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF);
+                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, source_drawable, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
                         visual_changed = get_image_reply->visual && (xcb_visualtype->visual_id != get_image_reply->visual);
@@ -1075,13 +1103,13 @@ static int generate(void *data) {
 
                 clock_t benchDone = clock(); // DEBUG
 
-                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f, use_shm=%d, use_damage=%d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage);
+                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f | use_shm=%d, use_damage=%d, back buffer? %d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage, back_buffer_pixmap_available);
 
                 processed_image = true;
             }
 
             // process events
-            bool size_changed = false;
+            bool window_configuration_changed = false;
             xcb_generic_event_t *event = NULL;
             xcb_aux_sync(instance->xcb_conn);
             while ((event = xcb_poll_for_queued_event(instance->xcb_conn)) != NULL) {
@@ -1110,7 +1138,21 @@ static int generate(void *data) {
                     FBLOG_TRACE(instance->ext_instance_ref, "Configure notification received for 0x%08x", e->window);
                     if ((e->window == instance->window) && ((e->width != geom->width) || (e->height != geom->height))) {
                         FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", geom->width, geom->height, e->width, e->height);
-                        size_changed = true;
+                        window_configuration_changed = true;
+                    }
+                } else if (event_type == XCB_EXPOSE) {
+                    xcb_expose_event_t *e = (xcb_expose_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Expose notification received for 0x%08x", e->window);
+                    if (e->window == instance->window) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Window exposure changed (contents became unavailable or returned); reinitialization needed");
+                        window_configuration_changed = true;
+                    }
+                } else if (event_type == XCB_MAP_NOTIFY) {
+                    xcb_map_notify_event_t *e = (xcb_map_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Map notification received for 0x%08x", e->window);
+                    if (e->window == instance->window) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (compositing toggled on/off?); reinitialization needed");
+                        window_configuration_changed = true;
                     }
                 } else {
                     FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x", event->response_type);
@@ -1120,8 +1162,8 @@ static int generate(void *data) {
                 event = NULL;
             }
 
-            if (size_changed) {
-                FBLOG_INFO(instance->ext_instance_ref, "window size changed, reinitializing");
+            if (window_configuration_changed) {
+                FBLOG_INFO(instance->ext_instance_ref, "window size or availability changed, reinitializing");
                 break;
             }
             if (use_damage && !update_available) {
@@ -1139,6 +1181,20 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to unsubscribe from window changes");
             free(xcb_err);
             xcb_err = NULL;
+        }
+
+        if (back_buffer_pixmap_available) {
+            xcb_void_cookie = xcb_free_pixmap_checked(instance->xcb_conn, back_buffer_pixmap);
+            xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+            if (!xcb_err) {
+                FBLOG_TRACE(instance->ext_instance_ref, "released back-buffer pixmap");
+                back_buffer_pixmap = -1;
+                back_buffer_pixmap_available = false;
+            } else {
+                FBLOG_WARN(instance->ext_instance_ref, "failed to release back-buffer pixmap; X11 error code %hu", xcb_err->error_code);
+                free(xcb_err);
+                xcb_err = NULL;
+            }
         }
 
         // further resets will be handled for termination, no need to do it twice
