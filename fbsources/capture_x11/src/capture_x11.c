@@ -983,14 +983,14 @@ static int generate(void *data) {
                         break;
                     }
                 } else {
+                    if (instance->X_image) {
+                        xcb_image_destroy(instance->X_image);
+                        instance->X_image = NULL;
+                    }
                     xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
                         visual_changed = (xcb_visualtype->visual_id != get_image_reply->visual);
-                        if (instance->X_image) {
-                            xcb_image_destroy(instance->X_image);
-                            instance->X_image = NULL;
-                        }
                         uint8_t *received = xcb_get_image_data(get_image_reply);
                         int received_len = xcb_get_image_data_length(get_image_reply);
                         if (!received) {
