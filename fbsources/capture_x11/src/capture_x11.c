@@ -508,7 +508,7 @@ static int generate(void *data) {
 
     bool success;
     bool processed_image = false;
-    xcb_get_geometry_reply_t *attrs = NULL;
+    xcb_get_geometry_reply_t *geom = NULL; // NOTE: we retain the reply, freed on termination or replacement
     xcb_generic_error_t *xcb_err = NULL;
     damage_list_item_t *damages = NULL;
     uint8_t damage_event_base = 0;
@@ -642,7 +642,7 @@ static int generate(void *data) {
     } else {
         FBLOG_INFO(instance->ext_instance_ref, "XDamage is available");
     }
-    
+
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
@@ -654,49 +654,49 @@ static int generate(void *data) {
                 FBLOG_DEBUG(instance->ext_instance_ref, "window found: 0x%lx", instance->window);
                 success = true;
 
-                if (attrs) {
-                    free(attrs);
-                    attrs = NULL;
+                if (geom) {
+                    free(geom);
+                    geom = NULL;
                 }
 
                 xcb_get_geometry_cookie_t geometry_cookie = xcb_get_geometry(instance->xcb_conn, instance->window);
-                attrs = xcb_get_geometry_reply(instance->xcb_conn, geometry_cookie, &xcb_err);
-                if (attrs && !xcb_err) {
+                geom = xcb_get_geometry_reply(instance->xcb_conn, geometry_cookie, &xcb_err);
+                if (geom && !xcb_err) {
                     // check window attributes
-                    if (attrs->depth != 24) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", attrs->depth, instance->window);
+                    if (geom->depth != 24) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", geom->depth, instance->window);
                         success = false;
                     }
 
-                    if (attrs->width < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", attrs->width, instance->window);
+                    if (geom->width < 1) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", geom->width, instance->window);
                         success = false;
                     }
 
-                    if (attrs->height < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", attrs->height, instance->window);
+                    if (geom->height < 1) {
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", geom->height, instance->window);
                         success = false;
                     }
                 }
                 if (xcb_err) {
-                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, attrs=%p", instance->window, xcb_err->error_code, attrs);
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, geom=%p", instance->window, xcb_err->error_code, geom);
                     success = false;
                     free(xcb_err);
                     xcb_err = NULL;
 
                     // prevent accidental use of invalid reply
-                    if (attrs) {
-                        free(attrs);
-                        attrs = NULL;
+                    if (geom) {
+                        free(geom);
+                        geom = NULL;
                     }
-                } else if (!attrs) {
-                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, attrs=%p", instance->window, attrs);
+                } else if (!geom) {
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, geom=%p", instance->window, geom);
                     success = false;
                 }
             }
-            
+
             if (success) {
-                FBLOG_DEBUG(instance->ext_instance_ref, "window attributes: width=%d, height=%d", attrs->width, attrs->height);
+                FBLOG_DEBUG(instance->ext_instance_ref, "window geometry: width=%d, height=%d", geom->width, geom->height);
                 break;
             }
 
@@ -712,7 +712,7 @@ static int generate(void *data) {
         }
 
         FBLOG_DEBUG(instance->ext_instance_ref, "worker allocating buffers");
-        buffer_size = 3 * attrs->width * attrs->height;
+        buffer_size = 3 * geom->width * geom->height;
         buffers[0] = malloc(buffer_size);
         buffers[1] = malloc(buffer_size);
         if (!buffers[0] || !buffers[1]) {
@@ -728,8 +728,8 @@ static int generate(void *data) {
             break;
         }
 
-        instance->width = attrs->width;
-        instance->height = attrs->height;
+        instance->width = geom->width;
+        instance->height = geom->height;
         instance->buffer_size = buffer_size;
         instance->buffers[0] = buffers[0];
         instance->buffers[1] = buffers[1];
@@ -751,7 +751,7 @@ static int generate(void *data) {
         }
 
         // check if the window is (fully) on screen
-        xcb_translate_coordinates_cookie_t translate_coordinates_cookie = xcb_translate_coordinates(instance->xcb_conn, instance->window, root_window, attrs->x, attrs->y);
+        xcb_translate_coordinates_cookie_t translate_coordinates_cookie = xcb_translate_coordinates(instance->xcb_conn, instance->window, root_window, geom->x, geom->y);
         xcb_translate_coordinates_reply_t *translate_coordinates_reply = xcb_translate_coordinates_reply(instance->xcb_conn, translate_coordinates_cookie, &xcb_err);
         int16_t window_offset_x = 0;
         int16_t window_offset_y = 0;
@@ -781,10 +781,10 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "window offset relative to screen is unknown - this may lead to issues accessing window contents");
         } else {
             // TODO: we may also have issues if the window has been minimized, check for that as well?
-            int right_edge = attrs->width + window_offset_x;
-            int bottom_edge = attrs->height + window_offset_y;
+            int right_edge = geom->width + window_offset_x;
+            int bottom_edge = geom->height + window_offset_y;
             window_fully_rendered = !((window_offset_x < 0) || (window_offset_y < 0) || (right_edge > screen_width) || (bottom_edge > screen_height));
-            FBLOG_DEBUG(instance->ext_instance_ref, "window_fully_rendered=%d (window offset %d/%d, window size %u/%u, edges %d/%d, screen %u/%u)", window_fully_rendered, window_offset_x, window_offset_y, attrs->width, attrs->height, right_edge, bottom_edge, screen_width, screen_height);
+            FBLOG_DEBUG(instance->ext_instance_ref, "window_fully_rendered=%d (window offset %d/%d, window size %u/%u, edges %d/%d, screen %u/%u)", window_fully_rendered, window_offset_x, window_offset_y, geom->width, geom->height, right_edge, bottom_edge, screen_width, screen_height);
         }
 
         // SHM can only be used if the window is completely on screen
@@ -844,7 +844,7 @@ static int generate(void *data) {
                 // FIXME: investigate paths/test with enabled SHM to check if this actually happens on reinitialization
                 FBLOG_ERROR(instance->ext_instance_ref, "MEMLEAK - 'create SHM XImage structure'");
             }
-            instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit?
+            instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit?
             if (!instance->X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_image_create failed, disabling SHM support");
                 use_shm = false;
@@ -962,7 +962,7 @@ static int generate(void *data) {
 
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
-                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
+                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     if (shm_get_image_reply && !xcb_err) {
                         visual_changed = (xcb_visualtype->visual_id != shm_get_image_reply->visual);
@@ -987,7 +987,7 @@ static int generate(void *data) {
                         xcb_image_destroy(instance->X_image);
                         instance->X_image = NULL;
                     }
-                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, attrs->x, attrs->y, attrs->width, attrs->height, 0xFFFFFFFF);
+                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, instance->window, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF);
                     xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
                         visual_changed = (xcb_visualtype->visual_id != get_image_reply->visual);
@@ -1002,8 +1002,8 @@ static int generate(void *data) {
                             } else {
                                 // FIXME: we may not actually need a separate buffer
                                 memcpy(buffer, received, received_len);
-                                // FIXME: we don't actually need an image instance, attributes and format are known and we have the buffer already - remove if not needed for sharing implementation with SHM
-                                instance->X_image = xcb_image_create(attrs->width, attrs->height, format, 0, attrs->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
+                                // FIXME: we don't actually need an image instance, geometry and format are known and we have the buffer already - remove if not needed for sharing implementation with SHM
+                                instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
                             }
                         }
                         // FIXME: do we need to also free the reply's image data?
@@ -1040,7 +1040,7 @@ static int generate(void *data) {
                 uint32_t *in = (uint32_t*) instance->X_image->data;
                 unsigned char *out = instance->buffers[work_buffer];
 
-                const uint32_t *end = in + (attrs->height * attrs->width);
+                const uint32_t *end = in + (geom->height * geom->width);
                 while (in < end) {
                     const uint32_t in_val = *in;
                     *(out++) = (in_val & red_mask) >> red_shift;
@@ -1072,14 +1072,14 @@ static int generate(void *data) {
                     xcb_image_destroy(instance->X_image);
                     instance->X_image = NULL;
                 }
-            
+
                 clock_t benchDone = clock(); // DEBUG
 
                 FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f, use_shm=%d, use_damage=%d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage);
 
                 processed_image = true;
             }
-            
+
             // process events
             bool size_changed = false;
             xcb_generic_event_t *event = NULL;
@@ -1108,8 +1108,8 @@ static int generate(void *data) {
                 } else if (event_type == XCB_CONFIGURE_NOTIFY) {
                     xcb_configure_notify_event_t *e = (xcb_configure_notify_event_t*) event;
                     FBLOG_TRACE(instance->ext_instance_ref, "Configure notification received for 0x%08x", e->window);
-                    if ((e->window == instance->window) && ((e->width != attrs->width) || (e->height != attrs->height))) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", attrs->width, attrs->height, e->width, e->height);
+                    if ((e->window == instance->window) && ((e->width != geom->width) || (e->height != geom->height))) {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", geom->width, geom->height, e->width, e->height);
                         size_changed = true;
                         continue;
                     }
@@ -1146,12 +1146,12 @@ static int generate(void *data) {
         if (instance->stop_generator) {
             break;
         }
-        
+
         if (use_shm && !shm_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
             break;
         }
-        
+
         if (!generator_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "worker reset failed, terminating");
             break;
@@ -1164,22 +1164,22 @@ static int generate(void *data) {
     }
 
     FBLOG_DEBUG(instance->ext_instance_ref, "shutting down worker thread");
-    
+
     fberror_t out_err = instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
-    
+
     if (use_shm && !shm_reset(instance, "termination")) {
         FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
         out_err = FBERROR_UNSPECIFIC;
     }
-    
+
     if (!generator_reset(instance, "termination")) {
         FBLOG_WARN(instance->ext_instance_ref, "worker reset failed during termination");
         out_err = FBERROR_UNSPECIFIC;
     }
 
-    if (attrs) {
-        free(attrs);
-        attrs = NULL;
+    if (geom) {
+        free(geom);
+        geom = NULL;
     }
 
     if (!destroy_damages(instance, &damages)) {
