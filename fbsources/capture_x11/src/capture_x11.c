@@ -431,14 +431,37 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
         for (int i=0; i<num_child_windows; i++) {
             xcb_window_t window = windows[i];
 
+            xcb_get_window_attributes_cookie_t get_window_attributes_cookie = xcb_get_window_attributes(instance->xcb_conn, window);
+            xcb_get_window_attributes_reply_t *get_window_attributes_reply = xcb_get_window_attributes_reply(instance->xcb_conn, get_window_attributes_cookie, &xcb_err);
+            bool got_get_window_attributes_reply = false;
+            bool window_has_no_output = false;
+            if (get_window_attributes_reply && !xcb_err) {
+                got_get_window_attributes_reply = true;
+                // NOTE: the underscore on _class probably indicates a private field but there appears to be no other way to get that information
+                window_has_no_output = (get_window_attributes_reply->_class == XCB_WINDOW_CLASS_INPUT_ONLY);
+            }
+            if (get_window_attributes_reply) {
+                free(get_window_attributes_reply);
+                get_window_attributes_reply = NULL;
+            }
+            if (xcb_err) {
+                FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to get window attributes for 0x%08x, X11 error code %hu; subscription to damage notifications may fail", window, xcb_err->error_code);
+                free(xcb_err);
+                xcb_err = NULL;
+            } else if (!got_get_window_attributes_reply) {
+                FBLOG_WARN(instance->ext_instance_ref, "[create_damages] failed to get window attributes for 0x%08x without X11 error code; subscription to damage notifications may fail", window);
+            }
+
+            // trying to subscribe to a window that is "input only" fails, prevent such requests
+            if (window_has_no_output) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "[create_damages] sub-window 0x%08x produces no output, skipping", window);
+                continue;
+            }
+
             damage_list_item_t *sublist = create_damages(instance, window, true);
             if (!sublist) {
-                // FIXME: we currently continue if a *child* failed, regardless of the reason - this makes sense for windows that apparently cannot be monitored but it would be better to prevent requesting a monitor then instead
-                /*
                 success = false;
                 break;
-                */
-                continue;
             }
 
             // join result to list
