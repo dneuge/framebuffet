@@ -293,12 +293,6 @@ static inline double clock2ms(clock_t c) {
     return ((double) c) / CLOCKS_PER_SEC * 1000.0;
 }
 
-static void clear_connection_fd_set(fbsource_capture_x11_t *instance) {
-    instance->connection_fd_set_count = 0;
-    instance->connection_fd_stop_excl = 0;
-    FD_ZERO(&instance->connection_fd_set);
-}
-
 static uint8_t calc_shift(uint32_t mask) {
     if (!mask) {
         return 0;
@@ -1153,8 +1147,6 @@ static int generate(void *data) {
         out_err = FBERROR_UNSPECIFIC;
     }
 
-    clear_connection_fd_set(instance);
-    
     if (attrs) {
         free(attrs);
         attrs = NULL;
