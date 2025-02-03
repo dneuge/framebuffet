@@ -57,7 +57,9 @@ typedef struct {
     char *display_name;
     char *window_search_name_exact;
     bool allow_shm;
-    
+    bool allow_back_buffer;
+    bool allow_damage;
+
     unsigned int width;
     unsigned int height;
     unsigned long buffer_size;
@@ -518,8 +520,7 @@ static int generate(void *data) {
     damage_list_item_t *damages = NULL;
     uint8_t damage_event_base = 0;
     xcb_visualtype_t *xcb_visualtype = NULL;
-    bool use_damage = true;
-
+    bool use_damage = instance->allow_damage;
     bool use_shm = instance->allow_shm;
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
@@ -761,7 +762,7 @@ static int generate(void *data) {
         xcb_drawable_t source_drawable = instance->window;
         bool back_buffer_pixmap_available = false;
         xcb_pixmap_t back_buffer_pixmap = -1;
-        if (instance->redirected_window) {
+        if (instance->redirected_window && instance->allow_back_buffer) {
             back_buffer_pixmap = xcb_generate_id(instance->xcb_conn);
             if (back_buffer_pixmap == -1) {
                 FBLOG_WARN(instance->ext_instance_ref, "failed to allocate ID for back-buffer pixmap");
@@ -1425,6 +1426,8 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
     }
 
     instance->allow_shm = get_config_boolean(instance, "allowSHM", true);
+    instance->allow_back_buffer = get_config_boolean(instance, "allowBackBuffer", true);
+    instance->allow_damage = get_config_boolean(instance, "allowDamage", true);
 
     // connect to X server
     if (success) {
