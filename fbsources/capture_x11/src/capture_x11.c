@@ -73,7 +73,6 @@ typedef struct {
     bool shm_assigned;
     bool shm_attached_self;
     bool shm_attached_xserver;
-    xcb_image_t *X_image;
     xcb_shm_segment_info_t shm_info;
     fd_set connection_fd_set;
     int connection_fd_set_count;
@@ -248,18 +247,6 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
         }
     }
     
-    if (success && instance->X_image) {
-        FBLOG_DEBUG(instance->ext_instance_ref, "destroying XImage");
-
-        // destroying the image assumes that it owns the attached buffer which is not the case for SHM, "detach" first
-        instance->X_image->base = NULL;
-        instance->X_image->data = NULL;
-        instance->X_image->size = 0;
-
-        xcb_image_destroy(instance->X_image);
-        instance->X_image = NULL;
-    }
-
     if (success && instance->shm_attached_self) {
         FBLOG_DEBUG(instance->ext_instance_ref, "detaching from SHM segment");
         res = shmdt(instance->shm_info.shmaddr);
@@ -867,19 +854,6 @@ static int generate(void *data) {
 
         // create SHM XImage structure
         if (use_shm) {
-            FBLOG_DEBUG(instance->ext_instance_ref, "initializing XShm");
-            if (instance->X_image) {
-                // FIXME: investigate paths/test with enabled SHM to check if this actually happens on reinitialization
-                FBLOG_ERROR(instance->ext_instance_ref, "MEMLEAK - 'create SHM XImage structure'");
-            }
-            instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL);
-            if (!instance->X_image) {
-                FBLOG_WARN(instance->ext_instance_ref, "xcb_image_create failed, disabling SHM support");
-                use_shm = false;
-            }
-        }
-
-        if (use_shm) {
             instance->shm_info.shmseg = xcb_generate_id(instance->xcb_conn);
             if (instance->shm_info.shmseg == -1) {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_generate_id failed to generate ID for xcb_shm_seg_t, disabling SHM support");
@@ -887,10 +861,10 @@ static int generate(void *data) {
             }
         }
 
-        // retrieve a SHM memory segment according to XImage specifications
+        // retrieve a SHM memory segment according to geometry
         ssize_t shm_buffer_size = 0;
         if (use_shm) {
-            shm_buffer_size = X_BYTES_PER_PIXEL * instance->X_image->width * instance->X_image->height;
+            shm_buffer_size = X_BYTES_PER_PIXEL * geom->width * geom->height;
             FBLOG_DEBUG(instance->ext_instance_ref, "requesting %lu bytes for SHM buffer", shm_buffer_size);
             instance->shm_info.shmid = shmget(IPC_PRIVATE, shm_buffer_size, IPC_CREAT|0777);
             if (instance->shm_info.shmid != -1) {
@@ -909,9 +883,6 @@ static int generate(void *data) {
             void *shm_addr = shmat((int) instance->shm_info.shmid, NULL, 0);
             if (shm_addr && (shm_addr != (void*)-1)) {
                 instance->shm_attached_self = true;
-                instance->X_image->data = shm_addr;
-                instance->X_image->base = shm_addr;
-                instance->X_image->size = shm_buffer_size;
                 instance->shm_info.shmaddr = shm_addr;
             } else {
                 // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
@@ -983,6 +954,9 @@ static int generate(void *data) {
         }
 
         bool update_available = true;
+        const size_t expected_image_length = geom->width * geom->height * X_BYTES_PER_PIXEL;
+        uint32_t *image_data = use_shm ? (uint32_t*) instance->shm_info.shmaddr : NULL; // NOTE: must not be freed!
+        xcb_get_image_reply_t *get_image_reply = NULL;
         while (!instance->stop_generator) {
             if (!use_damage || update_available) {
                 update_available = false;
@@ -1011,35 +985,24 @@ static int generate(void *data) {
                         break;
                     }
                 } else {
-                    if (instance->X_image) {
-                        xcb_image_destroy(instance->X_image);
-                        instance->X_image = NULL;
-                    }
                     xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, source_drawable, geom->x, geom->y, geom->width, geom->height, 0xFFFFFFFF);
-                    xcb_get_image_reply_t *get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
+                    get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
                         visual_changed = get_image_reply->visual && (xcb_visualtype->visual_id != get_image_reply->visual);
-                        uint8_t *received = xcb_get_image_data(get_image_reply);
+                        image_data = (uint32_t*) xcb_get_image_data(get_image_reply);
                         int received_len = xcb_get_image_data_length(get_image_reply);
-                        if (!received) {
+                        if (!image_data) {
                             FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: xcb_get_image_data returned NULL");
-                        } else {
-                            void *buffer = malloc(received_len); // TODO: retain and reallocate only when larger buffer is needed
-                            if (!buffer) {
-                                FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %d bytes to copy received image buffer", received_len);
-                            } else {
-                                // FIXME: we may not actually need a separate buffer
-                                memcpy(buffer, received, received_len);
-                                // FIXME: we don't actually need an image instance, geometry and format are known and we have the buffer already - remove if not needed for sharing implementation with SHM
-                                instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer);
-                            }
+                            break;
+                        } else if (received_len != expected_image_length) {
+                            FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: unexpected number of bytes received; got %d, expected %lu", received_len, expected_image_length);
+                            break;
                         }
                     }
                     bool got_reply = false;
                     if (get_image_reply) {
                         got_reply = true;
-                        free(get_image_reply);
-                        get_image_reply = NULL;
+                        // used and freed outside, keep in memory
                     }
                     if (xcb_err) {
                         FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed; X11 error code %hu", xcb_err->error_code);
@@ -1050,11 +1013,6 @@ static int generate(void *data) {
                         FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed without X11 error code");
                         break;
                     }
-
-                    if (!instance->X_image) {
-                        FBLOG_WARN(instance->ext_instance_ref, "xcb_get_image failed: no image received");
-                        break;
-                    }
                 }
                 clock_t benchGotImage = clock(); // DEBUG
 
@@ -1063,8 +1021,13 @@ static int generate(void *data) {
                     break;
                 }
 
+                if (!image_data) {
+                    FBLOG_WARN(instance->ext_instance_ref, "missing image data, reinitializing...");
+                    break;
+                }
+
                 int work_buffer = (instance->complete_buffer + 1) % 2;
-                uint32_t *in = (uint32_t*) instance->X_image->data;
+                uint32_t *in = image_data;
                 unsigned char *out = instance->buffers[work_buffer];
 
                 const uint32_t *end = in + (geom->height * geom->width);
@@ -1077,12 +1040,15 @@ static int generate(void *data) {
                 }
                 clock_t benchConverted = clock(); // DEBUG
 
+                if (get_image_reply) {
+                    free(get_image_reply);
+                    get_image_reply = NULL;
+                }
+
                 // mark buffer as complete
                 if (mtx_lock(&instance->mutex) != thrd_success) {
                     // just drop the frame if we cannot get hold of our mutex
                     FBLOG_WARN(instance->ext_instance_ref, "dropping frame because mutex failed to lock");
-                    xcb_image_destroy(instance->X_image);
-                    instance->X_image = NULL;
                     continue;
                 }
 
@@ -1095,16 +1061,16 @@ static int generate(void *data) {
                 framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
                 clock_t benchPublished = clock(); // DEBUG
 
-                if (!use_shm) {
-                    xcb_image_destroy(instance->X_image);
-                    instance->X_image = NULL;
-                }
-
                 clock_t benchDone = clock(); // DEBUG
 
                 FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f | use_shm=%d, use_damage=%d, back buffer? %d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage, back_buffer_pixmap_available);
 
                 processed_image = true;
+            }
+
+            if (get_image_reply) {
+                free(get_image_reply);
+                get_image_reply = NULL;
             }
 
             // process events
@@ -1194,6 +1160,11 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to unsubscribe from window changes");
             free(xcb_err);
             xcb_err = NULL;
+        }
+
+        if (get_image_reply) {
+            free(get_image_reply);
+            get_image_reply = NULL;
         }
 
         if (back_buffer_pixmap_available) {
