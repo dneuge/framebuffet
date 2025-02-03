@@ -10,6 +10,24 @@
 
 #define LOG_BUFFER_SIZE 8192
 
+#define NUM_IMAGE_BUFFERS 3
+#define DIFF_VIEW_BUFFER_ID 2
+#define BYTES_PER_PIXEL 3
+
+#define DIFF_CHANGED_RED 127
+#define DIFF_CHANGED_GREEN 0
+#define DIFF_CHANGED_BLUE 0
+#define DIFF_UNCHANGED_RED 0
+#define DIFF_UNCHANGED_GREEN 127
+#define DIFF_UNCHANGED_BLUE 0
+
+#define DIFF_CHANGED_RED_FRACTION 1.0f
+#define DIFF_CHANGED_GREEN_FRACTION 0.0f
+#define DIFF_CHANGED_BLUE_FRACTION 0.0f
+#define DIFF_UNCHANGED_RED_FRACTION 0.0f
+#define DIFF_UNCHANGED_GREEN_FRACTION 1.0f
+#define DIFF_UNCHANGED_BLUE_FRACTION 0.0f
+
 static int num_digits(int value) {
     int digits = 0;
 
@@ -87,25 +105,33 @@ static void log_receiver(fblog_level_t level, char *message) {
     log_msg(buffer);
 }
 
-static void flip_y(char **buffer, uint16_t line_length, uint16_t rows) {
-    if (!buffer || !*buffer) {
+static void flip_y(uint8_t *buffer, uint16_t line_length, uint16_t rows) {
+    if (!buffer) {
         return;
     }
 
     const size_t total_size = line_length * rows;
-    char *new_buffer = malloc(total_size);
+    uint8_t *tmp_buffer = malloc(total_size);
 
-    char *out = new_buffer;
-    char *in = (*buffer) + total_size - line_length;
-    const char *in_min = *buffer;
+    uint8_t *out = tmp_buffer;
+    uint8_t *in = buffer + total_size - line_length;
+    const uint8_t *in_min = buffer;
     while (in >= in_min) {
         memcpy(out, in, line_length);
         out += line_length;
         in -= line_length;
     }
 
-    free(*buffer);
-    *buffer = new_buffer;
+    memcpy(buffer, tmp_buffer, total_size);
+    free(tmp_buffer);
+}
+
+static inline uint8_t max2b(const uint8_t a, const uint8_t b) {
+    return a > b ? a : b;
+}
+
+static inline uint8_t max3b(const uint8_t a, const uint8_t b, const uint8_t c) {
+    return max2b(max2b(a, b), c);
 }
 
 int main(int argc, char *argv[]) {
@@ -118,7 +144,9 @@ int main(int argc, char *argv[]) {
 
     framebuffet_t *framebuffet = framebuffet_init();
     framebuffet_provide_log_receiver(framebuffet, log_receiver);
-    framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_TRACE);
+    //framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_TRACE);
+    framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_DEBUG);
+    //framebuffet_set_minimum_log_level(framebuffet, FBLOG_LEVEL_INFO);
 
     if (argc < 6) {
         printf("Call with config file, source ID and buffer ID to display, flipY flag (0/1) and module paths.\n");
@@ -127,7 +155,7 @@ int main(int argc, char *argv[]) {
 
     char *config_path = argv[1];
     char *source_id = argv[2];
-    int buffer_id = atoi(argv[3]);
+    int framebuffet_buffer_id = atoi(argv[3]);
     bool should_flip_y = (atoi(argv[4]) == 1);
 
     for (int i=5; i<argc; i++) {
@@ -146,10 +174,11 @@ int main(int argc, char *argv[]) {
     }
 
     printf("source ID: %s\n", source_id);
-    printf("buffer ID: %d\n", buffer_id);
+    printf("buffer ID: %d\n", framebuffet_buffer_id);
 
     int width = 2048;
     int height = 2048;
+    const int bytes_per_line = width * BYTES_PER_PIXEL;
 
     /*
     printf("instantiating source module\n");
@@ -182,10 +211,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("querying FB config for buffer %d", buffer_id);
+    printf("querying FB config for buffer %d", framebuffet_buffer_id);
     fbsource_buffer_config_t fb_config;
     while (1) {
-        res = framebuffet_get_buffer_configuration(source, buffer_id, &fb_config);
+        res = framebuffet_get_buffer_configuration(source, framebuffet_buffer_id, &fb_config);
         if (res == FBERROR_NONE) {
             break;
         }
@@ -198,12 +227,18 @@ int main(int argc, char *argv[]) {
     printf("\n");
 
     unsigned long buffer_size = fb_config.size;
-
-    printf("allocating buffer, size=%ld\n", buffer_size);
-    unsigned char *buffer = (unsigned char*) malloc(buffer_size);
-    if (!buffer) {
+    void *buffer_mem = NULL;
+    size_t total_buffer_size = buffer_size * NUM_IMAGE_BUFFERS;
+    printf("allocating %d image buffers, size=%lu, total=%lu\n", NUM_IMAGE_BUFFERS, buffer_size, total_buffer_size);
+    buffer_mem = malloc(total_buffer_size); // consecutive allocation used for easier implementation of diff view
+    if (!buffer_mem) {
         printf("buffer allocation failed\n");
         return 1;
+    }
+    memset(buffer_mem, 0, total_buffer_size);
+    uint8_t *buffers[NUM_IMAGE_BUFFERS] = {0};
+    for (int i=0; i<NUM_IMAGE_BUFFERS; i++) {
+        buffers[i] = (uint8_t*)(buffer_mem + (i * buffer_size));
     }
     printf("allocated\n");
 
@@ -229,6 +264,7 @@ int main(int argc, char *argv[]) {
 
     int frames_received = 0;
     unsigned int token = 0;
+    int current_frame_buffer = 0;
     while (1) {
         sleep_millis(10);
 
@@ -245,7 +281,7 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        framebuffet_wait_for_update_micros(source, buffer_id, token, 100000);
+        framebuffet_wait_for_update_micros(source, framebuffet_buffer_id, token, 100000);
         //framebuffet_wait_for_update(source, buffer_id, token);
 
         /*
@@ -256,7 +292,9 @@ int main(int argc, char *argv[]) {
         */
 
         // get the new frame
-        res = framebuffet_copy_latest_frame(source, buffer, buffer_size, buffer_id, &token);
+        current_frame_buffer = (current_frame_buffer + 1) % 2;
+        uint8_t *current_frame = buffers[current_frame_buffer];
+        res = framebuffet_copy_latest_frame(source, current_frame, buffer_size, framebuffet_buffer_id, &token);
         if (res) {
             printf("error %d\n", res);
             continue;
@@ -264,11 +302,121 @@ int main(int argc, char *argv[]) {
 
         // flip?
         if (should_flip_y) {
-            flip_y(&buffer, width * 3, height);
+            flip_y(current_frame, bytes_per_line, height);
+        }
+
+        // show difference between frames?
+        int diff_view_granularity = -1; // exponent 2^x, negative number disables, 0 compares exact pixels
+        bool diff_view_overlay = true; // blends with image if true; false shows only map of differences
+        bool enable_diff_view = (diff_view_granularity >= 0);
+        if (enable_diff_view) {
+            // diff view only works with tiles that end exactly on boundaries
+            const int diff_view_size = 1 << diff_view_granularity;
+            enable_diff_view = (width % diff_view_size == 0) && (height % diff_view_size == 0);
+            if (!enable_diff_view) {
+                printf("diff view disabled, image cannot be split into exact tiles\n");
+            }
+        }
+        if (enable_diff_view) {
+            uint32_t num_tiles_changed = 0;
+            int diff_view_size = 1 << diff_view_granularity;
+            int diff_view_line_num_bytes = diff_view_size * BYTES_PER_PIXEL;
+            uint8_t *diff_frame = buffers[DIFF_VIEW_BUFFER_ID];
+            uint8_t *previous_frame = buffers[(current_frame_buffer+1) % 2];
+            int tiles_horizontal = width / diff_view_size;
+            if (width % diff_view_size != 0) {
+                tiles_horizontal++;
+            }
+            int tiles_vertical = height / diff_view_size;
+            if (height % diff_view_size != 0) {
+                tiles_vertical++;
+            }
+            for (int tile_y=0; tile_y<tiles_vertical; tile_y++) {
+                for (int tile_x=0; tile_x<tiles_horizontal; tile_x++) {
+                    bool tile_changed = false;
+                    const size_t start_offset = (tile_y * diff_view_size * bytes_per_line) + (tile_x * diff_view_line_num_bytes);
+                    uint8_t *current_pixel_start = current_frame + start_offset;
+                    uint8_t *previous_pixel_start = previous_frame + start_offset;
+
+                    const uint8_t *current_pixel_last_line_start = current_pixel_start + ((diff_view_size-1) * bytes_per_line);
+                    while (!tile_changed && (current_pixel_start <= current_pixel_last_line_start)) {
+                        const uint8_t *current_pixel_start_of_line = current_pixel_start;
+                        const uint8_t *previous_pixel_start_of_line = previous_pixel_start;
+                        const uint8_t *current_pixel_past_eol = current_pixel_start + diff_view_line_num_bytes;
+                        while (current_pixel_start < current_pixel_past_eol) {
+                            // NOTE: this actually runs over to the next buffer on last pixel - that's okay because we still own that memory (consecutive buffer allocation)
+                            // memory RGBr => register rBGR (Little Endian), remove "r" byte
+                            //const uint32_t current_pixel_combined = (*(uint32_t*)current_pixel_start) & (uint32_t) 0x00FFFFFF;
+                            //const uint32_t previous_pixel_combined = (*(uint32_t*)previous_pixel_start) & (uint32_t) 0x00FFFFFF;
+                            const uint32_t current_pixel_combined = (current_pixel_start[0] << 16) | (current_pixel_start[1] << 8) | current_pixel_start[2];
+                            const uint32_t previous_pixel_combined = (previous_pixel_start[0] << 16) | (previous_pixel_start[1] << 8) | previous_pixel_start[2];
+                            if (current_pixel_combined != previous_pixel_combined) {
+                                tile_changed = true;
+                                break;
+                            }
+                            current_pixel_start += BYTES_PER_PIXEL;
+                            previous_pixel_start += BYTES_PER_PIXEL;
+                        }
+                        current_pixel_start = (uint8_t*)current_pixel_start_of_line + bytes_per_line;
+                        previous_pixel_start = (uint8_t*)previous_pixel_start_of_line + bytes_per_line;
+                    }
+
+                    if (tile_changed) {
+                        num_tiles_changed++;
+                    }
+
+                    // fill diff frame
+                    uint8_t *diff_pos = diff_frame + start_offset;
+                    uint8_t *current_frame_pos = current_frame + start_offset;
+                    const uint8_t *diff_last_line_start = diff_pos + ((diff_view_size-1) * bytes_per_line);
+                    while (diff_pos <= diff_last_line_start) {
+                        const uint8_t *diff_start_of_line = diff_pos;
+                        const uint8_t *current_frame_start_of_line = current_frame_pos;
+                        const uint8_t *diff_pos_past_eol = diff_pos + diff_view_line_num_bytes;
+                        while (diff_pos < diff_pos_past_eol) {
+                            if (diff_view_overlay) {
+                                //const float current_frame_brightness = (float)(current_frame_pos[0] + current_frame_pos[1] + current_frame_pos[2]) / 3.0f;
+                                const float current_frame_brightness = max3b(current_frame_pos[0], current_frame_pos[1], current_frame_pos[2]);
+                                const float structure_frac = 0.5f + (current_frame_brightness / 256.0f / 2.0f);
+                                if (tile_changed) {
+                                    *(diff_pos++) = (uint8_t) ((DIFF_CHANGED_RED_FRACTION * structure_frac) * 256.0f);
+                                    *(diff_pos++) = (uint8_t) ((DIFF_CHANGED_GREEN_FRACTION * structure_frac) * 256.0f);
+                                    *(diff_pos++) = (uint8_t) ((DIFF_CHANGED_BLUE_FRACTION * structure_frac) * 256.0f);
+                                } else {
+                                    *(diff_pos++) = (uint8_t) ((DIFF_UNCHANGED_RED_FRACTION * structure_frac) * 256.0f);
+                                    *(diff_pos++) = (uint8_t) ((DIFF_UNCHANGED_GREEN_FRACTION * structure_frac) * 256.0f);
+                                    *(diff_pos++) = (uint8_t) ((DIFF_UNCHANGED_BLUE_FRACTION * structure_frac) * 256.0f);
+                                }
+                            } else {
+                                if (tile_changed) {
+                                    *(diff_pos++) = DIFF_CHANGED_RED;
+                                    *(diff_pos++) = DIFF_CHANGED_GREEN;
+                                    *(diff_pos++) = DIFF_CHANGED_BLUE;
+                                } else {
+                                    *(diff_pos++) = DIFF_UNCHANGED_RED;
+                                    *(diff_pos++) = DIFF_UNCHANGED_GREEN;
+                                    *(diff_pos++) = DIFF_UNCHANGED_BLUE;
+                                }
+                            }
+                            current_frame_pos += BYTES_PER_PIXEL;
+                        }
+                        diff_pos = (uint8_t*)diff_start_of_line + bytes_per_line;
+                        current_frame_pos = (uint8_t*)current_frame_start_of_line + bytes_per_line;
+                    }
+                }
+            }
+
+            const uint32_t num_tiles = tiles_horizontal * tiles_vertical;
+            if (diff_view_granularity > 1) {
+                printf("%u tiles of %upx: %u changed (%.1f%%)\n", num_tiles, diff_view_size, num_tiles_changed, ((double)num_tiles_changed/num_tiles * 100.0));
+            } else {
+                // tiles are actually pixels
+                printf("%u pixels: %u changed (%.1f%%)\n", num_tiles, num_tiles_changed, ((double)num_tiles_changed/num_tiles * 100.0));
+            }
         }
 
         // update window
-        SDL_Surface *frame_surface = SDL_CreateRGBSurfaceWithFormatFrom((void*) buffer, width, height, 24, 3*width, SDL_PIXELFORMAT_RGB24);
+        SDL_Surface *frame_surface = SDL_CreateRGBSurfaceWithFormatFrom(enable_diff_view ? buffers[DIFF_VIEW_BUFFER_ID] : current_frame, width, height, 24, BYTES_PER_PIXEL*width, SDL_PIXELFORMAT_RGB24);
         if (!frame_surface) {
             printf("no SDL frame surface\n");
             break;
@@ -314,7 +462,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("done\n");
-    free(buffer);
+    free(buffer_mem);
 
     SDL_Quit();
 
