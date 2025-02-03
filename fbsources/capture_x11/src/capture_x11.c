@@ -35,6 +35,11 @@
  *   https://web.archive.org/web/20240806120127/http://www.talisman.org/~erlkonig/misc/x11-composite-tutorial/
  * which is now also unavailable and originally recovered
  *   https://web.archive.org/web/20101223183042/http://ktown.kde.org/~fredrik/composite_howto.html
+ *
+ * How to get woken up although events are read blocking: (written for Xlib; include xcb/sync.h)
+ *   https://nrk.neocities.org/articles/x11-timeout-with-xsyncalarm
+ * And using xcb_get_file_descriptor: (same as recently removed implementation used for Xlib; recover from Git?)
+ *   https://stackoverflow.com/questions/30387126/how-do-i-interrupt-xcb-wait-for-event
  */
 
 // TODO: make system errors readable using strerror
@@ -1073,72 +1078,78 @@ static int generate(void *data) {
                 get_image_reply = NULL;
             }
 
+            // FIXME: make sure we unblock after a certain time (queue an "alarm"?)
+
             // process events
+            // get the first event blocking and process it; at the end (do...while) poll the next already queued event,
+            // until all have been processed
             bool window_configuration_changed = false;
             xcb_generic_event_t *event = NULL;
-            xcb_aux_sync(instance->xcb_conn);
-            while ((event = xcb_poll_for_queued_event(instance->xcb_conn)) != NULL) {
-                uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
-                FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
-                if (event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
-                    // just ignore in case we stopped using damage but events keep coming in
-                    if (use_damage) {
-                        xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
-                        FBLOG_TRACE(instance->ext_instance_ref, "XDamage notification received for 0x%08x", e->drawable);
-                        update_available = true;
-                        xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
-                        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
-                        if (xcb_err) {
-                            FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
-                            use_damage = false;
-                            if (!destroy_damages(instance, &damages)) {
-                                FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances");
+            event = xcb_wait_for_event(instance->xcb_conn);
+            if (event) {
+                do {
+                    uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
+                    FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
+                    if (event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
+                        // just ignore in case we stopped using damage but events keep coming in
+                        if (use_damage) {
+                            xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
+                            FBLOG_TRACE(instance->ext_instance_ref, "XDamage notification received for 0x%08x", e->drawable);
+                            update_available = true;
+                            xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
+                            xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+                            if (xcb_err) {
+                                FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
+                                use_damage = false;
+                                if (!destroy_damages(instance, &damages)) {
+                                    FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances");
+                                }
+                                free(xcb_err);
+                                xcb_err = NULL;
                             }
-                            free(xcb_err);
-                            xcb_err = NULL;
                         }
+                    } else if (event_type == XCB_CONFIGURE_NOTIFY) {
+                        xcb_configure_notify_event_t *e = (xcb_configure_notify_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "Configure notification received for 0x%08x", e->window);
+                        if ((e->window == instance->window) && ((e->width != geom->width) || (e->height != geom->height))) {
+                            FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", geom->width, geom->height, e->width, e->height);
+                            window_configuration_changed = true;
+                        }
+                    } else if (event_type == XCB_EXPOSE) {
+                        xcb_expose_event_t *e = (xcb_expose_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "Expose notification received for 0x%08x", e->window);
+                        if (e->window == instance->window) {
+                            FBLOG_DEBUG(instance->ext_instance_ref, "Window exposure changed (contents became unavailable or returned); reinitialization needed");
+                            window_configuration_changed = true;
+                        }
+                    } else if (event_type == XCB_MAP_NOTIFY) {
+                        xcb_map_notify_event_t *e = (xcb_map_notify_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "Map notification received for 0x%08x", e->window);
+                        if (e->window == instance->window) {
+                            FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (mapped; compositing toggled on/off?); reinitialization needed");
+                            window_configuration_changed = true;
+                        }
+                    } else if (event_type == XCB_UNMAP_NOTIFY) {
+                        xcb_unmap_notify_event_t *e = (xcb_unmap_notify_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "Unmap notification received for 0x%08x", e->window);
+                        if (e->window == instance->window) {
+                            FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (unmapped; compositing toggled on/off?); reinitialization needed");
+                            window_configuration_changed = true;
+                        }
+                    } else if (event_type == XCB_DESTROY_NOTIFY) {
+                        xcb_destroy_notify_event_t *e = (xcb_destroy_notify_event_t*) event;
+                        FBLOG_TRACE(instance->ext_instance_ref, "Destroy notification received for 0x%08x", e->window);
+                        if (e->window == instance->window) {
+                            FBLOG_DEBUG(instance->ext_instance_ref, "window has been destroyed; reinitialization needed");
+                            window_configuration_changed = true;
+                        }
+                    } else {
+                        FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x (%hu)", event->response_type, event->response_type);
                     }
-                } else if (event_type == XCB_CONFIGURE_NOTIFY) {
-                    xcb_configure_notify_event_t *e = (xcb_configure_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Configure notification received for 0x%08x", e->window);
-                    if ((e->window == instance->window) && ((e->width != geom->width) || (e->height != geom->height))) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Configure notification indicates size has changed from %dx%d to %dx%d", geom->width, geom->height, e->width, e->height);
-                        window_configuration_changed = true;
-                    }
-                } else if (event_type == XCB_EXPOSE) {
-                    xcb_expose_event_t *e = (xcb_expose_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Expose notification received for 0x%08x", e->window);
-                    if (e->window == instance->window) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Window exposure changed (contents became unavailable or returned); reinitialization needed");
-                        window_configuration_changed = true;
-                    }
-                } else if (event_type == XCB_MAP_NOTIFY) {
-                    xcb_map_notify_event_t *e = (xcb_map_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Map notification received for 0x%08x", e->window);
-                    if (e->window == instance->window) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (mapped; compositing toggled on/off?); reinitialization needed");
-                        window_configuration_changed = true;
-                    }
-                } else if (event_type == XCB_UNMAP_NOTIFY) {
-                    xcb_unmap_notify_event_t *e = (xcb_unmap_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Unmap notification received for 0x%08x", e->window);
-                    if (e->window == instance->window) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "Mapping changed (unmapped; compositing toggled on/off?); reinitialization needed");
-                        window_configuration_changed = true;
-                    }
-                } else if (event_type == XCB_DESTROY_NOTIFY) {
-                    xcb_destroy_notify_event_t *e = (xcb_destroy_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Destroy notification received for 0x%08x", e->window);
-                    if (e->window == instance->window) {
-                        FBLOG_DEBUG(instance->ext_instance_ref, "window has been destroyed; reinitialization needed");
-                        window_configuration_changed = true;
-                    }
-                } else {
-                    FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x (%hu)", event->response_type, event->response_type);
-                }
 
-                free(event);
-                event = NULL;
+                    free(event);
+                    event = NULL;
+                } while ((event = xcb_poll_for_queued_event(instance->xcb_conn)) != NULL);
             }
 
             if (window_configuration_changed) {
