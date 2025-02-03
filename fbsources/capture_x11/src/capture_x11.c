@@ -569,7 +569,6 @@ static int generate(void *data) {
         xcb_shm_query_version_cookie_t shm_query_version_cookie = xcb_shm_query_version(instance->xcb_conn);
         xcb_shm_query_version_reply_t *shm_query_version_reply = xcb_shm_query_version_reply(instance->xcb_conn, shm_query_version_cookie, &xcb_err);
         if (shm_query_version_reply && !xcb_err) {
-            // FIXME: reply contains information about shared pixmaps and pixmap formats, do we need that?
             FBLOG_DEBUG(instance->ext_instance_ref, "SHM extension available, version %u.%u", shm_query_version_reply->major_version, shm_query_version_reply->minor_version);
         }
         bool got_shm_query_version_reply = false;
@@ -873,7 +872,7 @@ static int generate(void *data) {
                 // FIXME: investigate paths/test with enabled SHM to check if this actually happens on reinitialization
                 FBLOG_ERROR(instance->ext_instance_ref, "MEMLEAK - 'create SHM XImage structure'");
             }
-            instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL); // FIXME: do we need xpad? is bpp correct? what is unit?
+            instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, NULL, ~0, NULL);
             if (!instance->X_image) {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_image_create failed, disabling SHM support");
                 use_shm = false;
@@ -893,7 +892,7 @@ static int generate(void *data) {
         if (use_shm) {
             shm_buffer_size = X_BYTES_PER_PIXEL * instance->X_image->width * instance->X_image->height;
             FBLOG_DEBUG(instance->ext_instance_ref, "requesting %lu bytes for SHM buffer", shm_buffer_size);
-            instance->shm_info.shmid = shmget(IPC_PRIVATE, shm_buffer_size, IPC_CREAT|0777); // FIXME: verify arguments
+            instance->shm_info.shmid = shmget(IPC_PRIVATE, shm_buffer_size, IPC_CREAT|0777);
             if (instance->shm_info.shmid != -1) {
                 instance->shm_assigned = true;
             } else {
@@ -939,7 +938,7 @@ static int generate(void *data) {
 
         // attach the memory segment to X11
         if (use_shm) {
-            xcb_void_cookie = xcb_shm_attach_checked(instance->xcb_conn, instance->shm_info.shmseg, instance->shm_info.shmid, 0); // FIXME: is read_only correct? is there any constant?
+            xcb_void_cookie = xcb_shm_attach_checked(instance->xcb_conn, instance->shm_info.shmseg, instance->shm_info.shmid, 0);
             xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
             if (!xcb_err) {
                 FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_attach_checked succeeded");
@@ -1032,10 +1031,9 @@ static int generate(void *data) {
                                 // FIXME: we may not actually need a separate buffer
                                 memcpy(buffer, received, received_len);
                                 // FIXME: we don't actually need an image instance, geometry and format are known and we have the buffer already - remove if not needed for sharing implementation with SHM
-                                instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer); // FIXME: do we need xpad? is bpp correct? what is unit? do we need base, size, data?
+                                instance->X_image = xcb_image_create(geom->width, geom->height, format, 0, geom->depth, 24, 0, XCB_IMAGE_ORDER_LSB_FIRST, XCB_IMAGE_ORDER_MSB_FIRST, buffer, received_len, buffer);
                             }
                         }
-                        // FIXME: do we need to also free the reply's image data?
                     }
                     bool got_reply = false;
                     if (get_image_reply) {
