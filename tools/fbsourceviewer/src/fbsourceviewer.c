@@ -263,11 +263,9 @@ int main(int argc, char *argv[]) {
     printf("surface retrieved\n");
 
     int frames_received = 0;
-    unsigned int token = 0;
+    fbsource_token_t token = {0};
     int current_frame_buffer = 0;
     while (1) {
-        sleep_millis(10);
-
         // check if window has been closed
         int shutdown = 0;
         SDL_Event event;
