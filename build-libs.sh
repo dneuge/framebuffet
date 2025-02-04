@@ -204,6 +204,15 @@ else
     ./configure --prefix="$(realpath build)" || die "xcb-proto configure failed"
     make || die "xcb-proto make failed"
     make install || die "xcb-proto make install failed"
+    [[ ! -e build/local ]] && (ln -s . build/local || die "xcb-proto failed to create 'local' directory symlink")
+    if [[ ! -e "build/local/lib/python${python_version}/dist-packages" ]]; then
+        if [[ -e "build/local/lib/python${python_version}/site-packages" ]]; then
+            ln -s site-packages "build/local/lib/python${python_version}/dist-packages" || die "xcb-proto failed to create 'dist-packages' directory symlink"
+        else
+            die "xcb-proto failed due to unhandled directory layout for Python packages"
+        fi
+    fi
+    echo
 
     echo "=== Building xcb ==="
     cd_real_path "${script_dir}/lib/xcb"
