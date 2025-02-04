@@ -511,6 +511,7 @@ static int generate(void *data) {
     xcb_generic_error_t *xcb_err = NULL;
     damage_list_item_t *damages = NULL;
     uint8_t damage_event_base = 0;
+    uint8_t damage_event_notify = 0;
     xcb_visualtype_t *xcb_visualtype = NULL;
     bool got_damage_event_base = false;
     bool use_damage = instance->allow_damage;
@@ -587,6 +588,7 @@ static int generate(void *data) {
         xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
         if (query_extension_reply && !xcb_err) {
             damage_event_base = query_extension_reply->first_event;
+            damage_event_notify = damage_event_base + XCB_DAMAGE_NOTIFY;
             got_damage_event_base = true;
             if (!query_extension_reply->present) {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
@@ -1092,7 +1094,7 @@ static int generate(void *data) {
             while (event) {
                 uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
                 FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
-                if (got_damage_event_base && event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
+                if (got_damage_event_base && event_type == damage_event_notify) {
                     // just ignore in case we stopped using damage but events keep coming in
                     if (use_damage) {
                         xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
