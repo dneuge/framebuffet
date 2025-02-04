@@ -14,6 +14,7 @@ Primary:
  - MinGW
  - NASM
  - Python 3.10
+ - SDL 2
  - X11 development resources (X.org server, Xlib, Xext, Xcomposite, Xdamage)
    - X.org autoconf macros (package `xutils-dev`)
 

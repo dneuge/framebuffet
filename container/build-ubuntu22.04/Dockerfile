@@ -17,6 +17,7 @@ RUN apt -y install \
     cmake \
     curl \
     git \
+    libsdl2-dev \
     libtool \
     libxcomposite-dev \
     libxdamage-dev \
