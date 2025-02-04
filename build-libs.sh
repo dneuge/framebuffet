@@ -192,6 +192,11 @@ else
     echo "xcb-util-image uses m4 revision ${xcb_util_image_m4_revision}"
     echo
     
+    echo "=== Preparing xcb-proto ==="
+    cd_real_path "${script_dir}/lib/xcb_proto"
+    autoreconf -v --install || die "xcb-proto autoreconf failed"
+    echo
+
     echo "=== Building xcb-proto ==="
     cd_real_path "${script_dir}/lib/xcb_proto"
     [[ -d build ]] && (rm -Rf build || die "xcb-proto rm clean failed")
