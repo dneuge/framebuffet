@@ -245,6 +245,7 @@ int main(int argc, char *argv[]) {
     // create SDL window
     printf("initializing SDL\n");
     SDL_Init(SDL_INIT_VIDEO);
+    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
     printf("SDL initialized, creating window\n");
     const char *window_title = should_flip_y ? "FBSourceViewer [flipY]" : "FBSourceViewer";
