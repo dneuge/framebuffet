@@ -1,0 +1,11 @@
+--- a/xcb_proto/xcbgen/xtypes.py	2024-04-15 16:38:00.000000000 +0200
++++ b/xcb_proto/xcbgen/xtypes.py	2025-02-04 16:25:18.211017582 +0100
+@@ -522,6 +522,8 @@
+         self.size = 0
+         self.lenfield_parent = [self]
+         self.length_expr = None
++        self.force_packed = bool(elt.get('_force_packed'))  # patched; not available upstream
++
+ 
+         # get required_start_alignment
+         required_start_align_element = elt.find("required_start_align")

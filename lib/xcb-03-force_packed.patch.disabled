@@ -1,0 +1,14 @@
+--- a/xcb/src/c_client.py	2024-04-15 17:09:27.000000000 +0200
++++ b/xcb/src/c_client.py	2025-02-04 16:25:06.347142453 +0100
+@@ -2158,8 +2158,10 @@
+     '''
+     Exported function that handles structure declarations.
+     '''
++    force_packed = hasattr(self, 'force_packed') and self.force_packed and self.name == name  # patched; not available upstream
++    
+     _c_type_setup(self, name, ())
+-    _c_complex(self)
++    _c_complex(self, force_packed)
+     _c_accessors(self, name, name)
+     _c_iterator(self, name)
+ 

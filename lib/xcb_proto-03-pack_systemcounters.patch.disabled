@@ -1,0 +1,11 @@
+--- a/xcb_proto/src/sync.xml	2024-04-15 16:38:00.000000000 +0200
++++ b/xcb_proto/src/sync.xml	2025-02-04 16:10:07.851855513 +0100
+@@ -46,7 +46,7 @@
+     <field type="CARD32" name="lo" />
+   </struct>
+ 
+-  <struct name="SYSTEMCOUNTER">
++  <struct name="SYSTEMCOUNTER" _force_packed="true">
+     <field type="COUNTER" name="counter" />
+     <field type="sync:INT64" name="resolution" />
+     <field type="CARD16" name="name_len" />
