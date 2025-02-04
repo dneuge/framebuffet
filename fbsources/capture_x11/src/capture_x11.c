@@ -495,6 +495,46 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
     return NULL;
 }
 
+/**
+ * Queries X11 about availability of the given extension.
+ * @param instance capture instance
+ * @param extension_name name of X11 extension to query
+ * @param event_base pointer to a variable to receive the first event code of the extension; set to NULL if not needed; will only be modified if successful
+ * @return true if successful, false otherwise
+ */
+static bool query_extension(fbsource_capture_x11_t *instance, const char *extension_name, uint8_t *event_base) {
+    bool success = false;
+    xcb_generic_error_t *xcb_err = NULL;
+
+    xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(extension_name), extension_name);
+    xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
+    if (query_extension_reply && !xcb_err) {
+        if (!query_extension_reply->present) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\"", extension_name);
+        } else {
+            if (event_base) {
+                *event_base = query_extension_reply->first_event;
+            }
+            success = true;
+        }
+    }
+    bool got_query_extension_reply = false;
+    if (query_extension_reply) {
+        got_query_extension_reply = true;
+        free(query_extension_reply);
+        query_extension_reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension for \"%s\" failed; X11 error code %hu", extension_name, xcb_err->error_code);
+        free(xcb_err);
+        xcb_err = NULL;
+    } else if (!got_query_extension_reply) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "xcb_query_extension for \"%s\" failed without X11 error code", extension_name);
+    }
+
+    return success;
+}
+
 static int generate(void *data) {
     const xcb_image_format_t format = XCB_IMAGE_FORMAT_Z_PIXMAP;
 
@@ -583,31 +623,11 @@ static int generate(void *data) {
     }
 
     if (use_damage) {
-        const char damage_extension_name[] = "DAMAGE";
-        xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
-        xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
-        if (query_extension_reply && !xcb_err) {
-            damage_event_base = query_extension_reply->first_event;
+        if (query_extension(instance, "DAMAGE", &damage_event_base)) {
             damage_event_notify = damage_event_base + XCB_DAMAGE_NOTIFY;
             got_damage_event_base = true;
-            if (!query_extension_reply->present) {
-                FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
-                use_damage = false;
-            }
-        }
-        bool got_query_extension_reply = false;
-        if (query_extension_reply) {
-            got_query_extension_reply = true;
-            free(query_extension_reply);
-            query_extension_reply = NULL;
-        }
-        if (xcb_err) {
-            FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension for %s failed, disabling XDamage; X11 error code %hu", damage_extension_name, xcb_err->error_code);
-            use_damage = false;
-            free(xcb_err);
-            xcb_err = NULL;
-        } else if (!got_query_extension_reply) {
-            FBLOG_DEBUG(instance->ext_instance_ref, "xcb_query_extension for %s failed without X11 error code, disabling XDamage", damage_extension_name);
+        } else {
+            FBLOG_WARN(instance->ext_instance_ref, "X11 does not seem to have damage extension, disabling");
             use_damage = false;
         }
     }
