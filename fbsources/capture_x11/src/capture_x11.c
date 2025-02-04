@@ -512,6 +512,7 @@ static int generate(void *data) {
     damage_list_item_t *damages = NULL;
     uint8_t damage_event_base = 0;
     xcb_visualtype_t *xcb_visualtype = NULL;
+    bool got_damage_event_base = false;
     bool use_damage = instance->allow_damage;
     bool use_shm = instance->allow_shm;
 
@@ -580,30 +581,33 @@ static int generate(void *data) {
         }
     }
 
-    const char damage_extension_name[] = "DAMAGE";
-    xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
-    xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
-    if (query_extension_reply && !xcb_err) {
-        damage_event_base = query_extension_reply->first_event;
-        if (!query_extension_reply->present) {
-            FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
+    if (use_damage) {
+        const char damage_extension_name[] = "DAMAGE";
+        xcb_query_extension_cookie_t query_extension_cookie = xcb_query_extension(instance->xcb_conn, strlen(damage_extension_name), damage_extension_name);
+        xcb_query_extension_reply_t *query_extension_reply = xcb_query_extension_reply(instance->xcb_conn, query_extension_cookie, &xcb_err);
+        if (query_extension_reply && !xcb_err) {
+            damage_event_base = query_extension_reply->first_event;
+            got_damage_event_base = true;
+            if (!query_extension_reply->present) {
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension did not find \"%s\", disabling XDamage", damage_extension_name);
+                use_damage = false;
+            }
+        }
+        bool got_query_extension_reply = false;
+        if (query_extension_reply) {
+            got_query_extension_reply = true;
+            free(query_extension_reply);
+            query_extension_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension for %s failed, disabling XDamage; X11 error code %hu", damage_extension_name, xcb_err->error_code);
+            use_damage = false;
+            free(xcb_err);
+            xcb_err = NULL;
+        } else if (!got_query_extension_reply) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "xcb_query_extension for %s failed without X11 error code, disabling XDamage", damage_extension_name);
             use_damage = false;
         }
-    }
-    bool got_query_extension_reply = false;
-    if (query_extension_reply) {
-        got_query_extension_reply = true;
-        free(query_extension_reply);
-        query_extension_reply = NULL;
-    }
-    if (xcb_err) {
-        FBLOG_WARN(instance->ext_instance_ref, "xcb_query_extension for %s failed, disabling XDamage; X11 error code %hu", damage_extension_name, xcb_err->error_code);
-        use_damage = false;
-        free(xcb_err);
-        xcb_err = NULL;
-    } else if (!got_query_extension_reply) {
-        FBLOG_DEBUG(instance->ext_instance_ref, "xcb_query_extension for %s failed without X11 error code, disabling XDamage", damage_extension_name);
-        use_damage = false;
     }
 
     if (use_damage) {
@@ -1088,7 +1092,7 @@ static int generate(void *data) {
             while (event) {
                 uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
                 FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
-                if (event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
+                if (got_damage_event_base && event_type == damage_event_base + XCB_DAMAGE_NOTIFY) {
                     // just ignore in case we stopped using damage but events keep coming in
                     if (use_damage) {
                         xcb_damage_notify_event_t *e = (xcb_damage_notify_event_t*) event;
