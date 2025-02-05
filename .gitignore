@@ -18,6 +18,7 @@ build
 lib/*
 !lib/CMakeModules
 !lib/*.patch
+!lib/*.patch.disabled
 release
 
 user.cfg
