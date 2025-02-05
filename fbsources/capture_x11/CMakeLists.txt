@@ -4,6 +4,8 @@ PROJECT(fbsource_capture_x11)
 SET(CMAKE_BUILD_TYPE Debug)
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+INCLUDE(CheckTypeSize)
+
 SET(FRAMEBUFFET_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../../framework/release/include)
 SET(FRAMEBUFFET_LIB ${CMAKE_CURRENT_SOURCE_DIR}/../../framework/release/lib)
 
@@ -13,9 +15,16 @@ SET(FBPLUGIN_SOURCES
 
 SET(LIB_BUILD "${CMAKE_CURRENT_SOURCE_DIR}/../../lib/_build")
 
-SET(XCB_STATIC "${LIB_BUILD}/libxcb-image.a" "${LIB_BUILD}/libxcb-util.a" "${LIB_BUILD}/libxcb-composite.a" "${LIB_BUILD}/libxcb-damage.a" "${LIB_BUILD}/libxcb-shm.a" "${LIB_BUILD}/libxcb.a")
+SET(XCB_STATIC "${LIB_BUILD}/libxcb-image.a" "${LIB_BUILD}/libxcb-util.a" "${LIB_BUILD}/libxcb-composite.a" "${LIB_BUILD}/libxcb-damage.a" "${LIB_BUILD}/libxcb-shm.a" "${LIB_BUILD}/libxcb-sync.a" "${LIB_BUILD}/libxcb.a")
 
 ADD_DEFINITIONS(-DFBLOG_COMPILED_MIN_LOG_LEVEL=FBLOG_LEVEL_TRACE)
+
+SET(CMAKE_EXTRA_INCLUDE_FILES "${LIB_BUILD}/xcb/sync.h")
+CHECK_TYPE_SIZE("xcb_sync_systemcounter_t" SIZEOF_XCB_SYNC_SYSTEMCOUNTER)
+SET(CMAKE_EXTRA_INCLUDE_FILES)
+IF(HAVE_SIZEOF_XCB_SYNC_SYSTEMCOUNTER)
+    ADD_DEFINITIONS(-DXCB_SYNC_SYSTEMCOUNTER_STRUCT_SIZE=${SIZEOF_XCB_SYNC_SYSTEMCOUNTER})
+ENDIF()
 
 ADD_LIBRARY(fbsource_capture_x11 SHARED ${FBPLUGIN_SOURCES})
 

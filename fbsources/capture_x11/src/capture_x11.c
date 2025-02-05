@@ -16,6 +16,7 @@
 #include <xcb/composite.h>
 #include <xcb/damage.h>
 #include <xcb/shm.h>
+#include <xcb/sync.h>
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
@@ -64,6 +65,7 @@ typedef struct {
     bool allow_shm;
     bool allow_back_buffer;
     bool allow_damage;
+    bool allow_sync_alarms;
 
     unsigned int width;
     unsigned int height;
@@ -85,14 +87,17 @@ typedef struct {
     
 } fbsource_capture_x11_t;
 
+#define WAIT_FOR_EVENTS_ALARM_MILLISECONDS (500)
+#define WAIT_FOR_EVENTS_SLEEP_MILLISECONDS (5)
+
 static const struct timespec wait_for_window = {
     .tv_sec = 2,
     .tv_nsec = 0
 };
 
-static const struct timeval wait_for_events_timeout = {
-    .tv_sec = 2,
-    .tv_usec = 0
+static const struct timespec wait_for_events_sleep = {
+    .tv_sec = 0,
+    .tv_nsec = WAIT_FOR_EVENTS_SLEEP_MILLISECONDS * 1000000
 };
 
 static const struct timespec wait_after_error = {
@@ -502,7 +507,7 @@ static damage_list_item_t* create_damages(fbsource_capture_x11_t *instance, xcb_
  * @param event_base pointer to a variable to receive the first event code of the extension; set to NULL if not needed; will only be modified if successful
  * @return true if successful, false otherwise
  */
-static bool query_extension(fbsource_capture_x11_t *instance, const char *extension_name, uint8_t *event_base) {
+static bool query_extension(const fbsource_capture_x11_t *instance, const char *extension_name, uint8_t *event_base) {
     bool success = false;
     xcb_generic_error_t *xcb_err = NULL;
 
@@ -535,6 +540,99 @@ static bool query_extension(fbsource_capture_x11_t *instance, const char *extens
     return success;
 }
 
+// XCB 1.17.0 appears to have a misalignment when accessing system counter names and iterating over list replies
+// https://lists.freedesktop.org/archives/xcb/2025-February/011485.html
+#define ACTUAL_SYNC_SYSTEMCOUNTER_SIZE 14
+#if XCB_SYNC_SYSTEMCOUNTER_STRUCT_SIZE != ACTUAL_SYNC_SYSTEMCOUNTER_SIZE
+#define NEXT_SYSTEMCOUNTER(it) workaround_xcb_sync_systemcounter_next(it)
+#define SYSTEMCOUNTER_NAME(item) workaround_xcb_sync_systemcounter_name(item)
+#else
+#warning XCB SYNC system counters now match the actual (manually determined) size, remove workaround if no longer needed
+#define NEXT_SYSTEMCOUNTER(it) xcb_sync_systemcounter_next(it)
+#define SYSTEMCOUNTER_NAME(item) xcb_sync_systemcounter_name(item)
+#endif
+
+static char* workaround_xcb_sync_systemcounter_name(const xcb_sync_systemcounter_t *R) {
+    char *res = xcb_sync_systemcounter_name(R);
+    res -= 2;
+    return res;
+}
+
+static void workaround_xcb_sync_systemcounter_next(xcb_sync_systemcounter_iterator_t *i) {
+    xcb_sync_systemcounter_t *prev = i->data;
+    i->rem--;
+    i->index++;
+
+    char *addr = (char*)workaround_xcb_sync_systemcounter_name(prev) + xcb_sync_systemcounter_name_length(prev) + 1;
+    int alignment = 4; // FIXME: this is very naive and should probably be done in an architecturally safer way
+    int rem_alignment = (long)addr % alignment;
+    if (rem_alignment != 0) {
+        addr += alignment - rem_alignment;
+    }
+    i->data = (xcb_sync_systemcounter_t*) addr;
+}
+
+/**
+ * Searches the specified system counter as available from SYNC extension.
+ * @param instance capture instance
+ * @param expected_name name of system counter to search for
+ * @param counter pointer to a variable to receive the counter; set to NULL if not needed; will only be modified if successful
+ * @param resolution pointer to a variable to receive the counter resolution; set to NULL if not needed; will only be modified if successful
+ * @return true if found, false if not
+ */
+static bool find_system_counter(const fbsource_capture_x11_t *instance, const char *expected_name, xcb_sync_counter_t *counter, xcb_sync_int64_t *resolution) {
+    bool found = false;
+    xcb_generic_error_t *xcb_err = NULL;
+    const size_t expected_name_len = strlen(expected_name);
+
+    xcb_sync_list_system_counters_cookie_t cookie = xcb_sync_list_system_counters(instance->xcb_conn);
+    xcb_sync_list_system_counters_reply_t *reply = xcb_sync_list_system_counters_reply(instance->xcb_conn, cookie, &xcb_err);
+    if (reply && !xcb_err) {
+        int num_counters = xcb_sync_list_system_counters_counters_length(reply);
+        if (num_counters > 0) {
+            xcb_sync_systemcounter_iterator_t it = xcb_sync_list_system_counters_counters_iterator(reply);
+            for (int i=0; i<num_counters; i++, NEXT_SYSTEMCOUNTER(&it)) {
+                xcb_sync_systemcounter_t *item = it.data;
+                if (!item) {
+                    continue;
+                }
+
+                int name_len = xcb_sync_systemcounter_name_length(item);
+                if (name_len != expected_name_len) {
+                    continue;
+                }
+
+                char *name = SYSTEMCOUNTER_NAME(item);
+                if (name && !strncmp(name, expected_name, name_len)) {
+                    found = true;
+                    if (counter) {
+                        *counter = it.data->counter;
+                    }
+                    if (resolution) {
+                        *resolution = it.data->resolution;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    bool got_reply = false;
+    if (reply) {
+        got_reply = true;
+        free(reply);
+        reply = NULL;
+    }
+    if (xcb_err) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_list_system_counters failed; X11 error code %hu", xcb_err->error_code);
+        free(xcb_err);
+        xcb_err = NULL;
+    } else if (!got_reply) {
+        FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_list_system_counters failed without X11 error code");
+    }
+
+    return found;
+}
+
 static int generate(void *data) {
     const xcb_image_format_t format = XCB_IMAGE_FORMAT_Z_PIXMAP;
 
@@ -547,15 +645,20 @@ static int generate(void *data) {
 
     bool success;
     bool processed_image = false;
+    xcb_void_cookie_t xcb_void_cookie = {0};
     xcb_get_geometry_reply_t *geom = NULL; // NOTE: we retain the reply, freed on termination or replacement
     xcb_generic_error_t *xcb_err = NULL;
     damage_list_item_t *damages = NULL;
     uint8_t damage_event_base = 0;
     uint8_t damage_event_notify = 0;
+    uint8_t sync_event_base = 0;
+    uint8_t sync_event_alarm_notify = 0;
     xcb_visualtype_t *xcb_visualtype = NULL;
     bool got_damage_event_base = false;
+    bool got_sync_event_base = false;
     bool use_damage = instance->allow_damage;
     bool use_shm = instance->allow_shm;
+    bool use_sync_alarms = instance->allow_sync_alarms;
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
@@ -666,6 +769,79 @@ static int generate(void *data) {
         FBLOG_INFO(instance->ext_instance_ref, "XDamage is available");
     }
 
+    if (use_sync_alarms && !query_extension(instance, "SYNC", &sync_event_base)) {
+        FBLOG_WARN(instance->ext_instance_ref, "X11 does not seem to have sync extension, disabling sync alarms");
+        use_sync_alarms = false;
+    }
+
+    if (use_sync_alarms) {
+        sync_event_alarm_notify = sync_event_base + XCB_SYNC_ALARM_NOTIFY;
+        got_sync_event_base = true;
+
+        xcb_sync_initialize_cookie_t sync_initialize_cookie = xcb_sync_initialize(instance->xcb_conn, 3, 1);
+        xcb_sync_initialize_reply_t *sync_initialize_reply = xcb_sync_initialize_reply(instance->xcb_conn, sync_initialize_cookie, &xcb_err);
+        if (sync_initialize_reply && !xcb_err) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "SYNC extension available, version %u.%u", sync_initialize_reply->major_version, sync_initialize_reply->minor_version);
+        }
+        bool got_sync_initialize_reply = false;
+        if (sync_initialize_reply) {
+            got_sync_initialize_reply = true;
+            free(sync_initialize_reply);
+            sync_initialize_reply = NULL;
+        }
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_initialize failed, disabling sync alarms; X11 error code %hu", xcb_err->error_code);
+            use_sync_alarms = false;
+            free(xcb_err);
+            xcb_err = NULL;
+        } else if (!got_sync_initialize_reply) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_initialize failed without X11 error code, disabling sync alarms");
+            use_sync_alarms = false;
+        }
+    }
+
+    xcb_sync_counter_t xcb_sync_servertime_counter = {0};
+    xcb_sync_int64_t xcb_sync_servertime_resolution = {0};
+    if (use_sync_alarms && !find_system_counter(instance, "SERVERTIME", &xcb_sync_servertime_counter, &xcb_sync_servertime_resolution)) {
+        FBLOG_WARN(instance->ext_instance_ref, "failed to find server time counter, disabling sync alarms");
+        use_sync_alarms = false;
+    }
+
+    xcb_sync_alarm_t alarm_id = -1;
+    if (use_sync_alarms) {
+        alarm_id = xcb_generate_id(instance->xcb_conn);
+        if (alarm_id == -1) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to allocate alarm ID, disabling sync alarms");
+            use_sync_alarms = false;
+        }
+    }
+
+    xcb_sync_create_alarm_value_list_t alarm_values = {
+        // NOTE: value is split, see discussion on https://lists.freedesktop.org/archives/xcb/2013-June/008375.html
+        //       also refer to protocol regarding behaviour: https://www.x.org/releases/X11R7.6/doc/xextproto/sync.html
+        .counter = xcb_sync_servertime_counter,
+        .delta = 0, // trigger once, do not modify value
+        .value.hi = 0,
+        .value.lo = WAIT_FOR_EVENTS_ALARM_MILLISECONDS,
+        .valueType = XCB_SYNC_VALUETYPE_RELATIVE,
+        .testType = XCB_SYNC_TESTTYPE_POSITIVE_COMPARISON
+    };
+    uint32_t alarm_mask = XCB_SYNC_CA_COUNTER | XCB_SYNC_CA_DELTA | XCB_SYNC_CA_VALUE | XCB_SYNC_CA_VALUE_TYPE | XCB_SYNC_CA_TEST_TYPE;
+    if (use_sync_alarms) {
+        xcb_void_cookie = xcb_sync_create_alarm_checked(instance->xcb_conn, alarm_id, alarm_mask, &alarm_values);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_create_alarm_checked failed with X11 error code %hu, disabling sync alarms", xcb_err->error_code);
+            use_sync_alarms = false;
+            free(xcb_err);
+            xcb_err = NULL;
+        }
+    }
+
+    if (use_sync_alarms) {
+        FBLOG_DEBUG(instance->ext_instance_ref, "sync alarm configured");
+    }
+
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
@@ -763,7 +939,7 @@ static int generate(void *data) {
         framebuffet_publish_num_buffers(instance->ext_instance_ref, 1);
 
         // window needs to be redirected to off-screen buffer to be fully accessible if not visible
-        xcb_void_cookie_t xcb_void_cookie = xcb_composite_redirect_window_checked(instance->xcb_conn, instance->window, XCB_COMPOSITE_REDIRECT_AUTOMATIC);
+        xcb_void_cookie = xcb_composite_redirect_window_checked(instance->xcb_conn, instance->window, XCB_COMPOSITE_REDIRECT_AUTOMATIC);
         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
         if (!xcb_err) {
             instance->redirected_window = true;
@@ -1107,13 +1283,42 @@ static int generate(void *data) {
             // FIXME: make sure we unblock after a certain time (queue an "alarm"?)
 
             // process events
-            // Get the first event blocking and process it. At the end poll the next already queued event,
+            // Get the first event and process it. At the end poll the next already queued event,
             // until all have been processed (event becomes NULL).
             bool window_configuration_changed = false;
-            xcb_generic_event_t *event = xcb_wait_for_event(instance->xcb_conn);
+            xcb_generic_event_t *event = xcb_poll_for_queued_event(instance->xcb_conn);
+            if (!event) {
+                // xcb_wait_for_event blocks without a timeout, so we need to reschedule our alarm to eventually get
+                // woken up by the server
+                if (!use_damage && use_sync_alarms) {
+                    // there is no point in using sync alarms if we are somehow unable to use damage notifications as
+                    // we will need to periodically wake up either way, otherwise we will miss lots of frames
+                    FBLOG_WARN(instance->ext_instance_ref, "Damage notifications are disabled, disabling sync alarms as well; window will be captured based purely on sleep intervals");
+                    use_sync_alarms = false;
+                }
+                if (use_sync_alarms) {
+                    xcb_void_cookie = xcb_sync_change_alarm_checked(instance->xcb_conn, alarm_id, alarm_mask, &alarm_values);
+                    xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+                    if (xcb_err) {
+                        FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_change_alarm_checked failed with X11 error code %hu, disabling sync alarms", xcb_err->error_code);
+                        use_sync_alarms = false;
+                        free(xcb_err);
+                        xcb_err = NULL;
+                    }
+                    xcb_flush(instance->xcb_conn);
+                }
+
+                if (use_sync_alarms) {
+                    event = xcb_wait_for_event(instance->xcb_conn);
+                } else {
+                    // fallback: try to sleep instead, then poll again
+                    thrd_sleep(&wait_for_events_sleep, NULL);
+                    event = xcb_poll_for_queued_event(instance->xcb_conn);
+                }
+            }
             while (event) {
                 uint8_t event_type = XCB_EVENT_RESPONSE_TYPE(event);
-                FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | damage event base 0x%02x", event->response_type, damage_event_base);
+                FBLOG_TRACE(instance->ext_instance_ref, "received event type: 0x%02x | event bases: damage=0x%02x, sync=0x%02x", event->response_type, damage_event_base, sync_event_base);
                 if (got_damage_event_base && event_type == damage_event_notify) {
                     // just ignore in case we stopped using damage but events keep coming in
                     if (use_damage) {
@@ -1123,6 +1328,7 @@ static int generate(void *data) {
                         xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
                         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
                         if (xcb_err) {
+                            // FIXME: this happens way too often, check why; reproduce: with compositing on have source viewer and captured window on separate virtual desktops, change window to trigger reinitialization, come back => subtract failed, probably because window changed while processing damage - we should not disable damage in that case!
                             FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
                             use_damage = false;
                             if (!destroy_damages(instance, &damages)) {
@@ -1167,6 +1373,9 @@ static int generate(void *data) {
                         FBLOG_DEBUG(instance->ext_instance_ref, "window has been destroyed; reinitialization needed");
                         window_configuration_changed = true;
                     }
+                } else if (got_sync_event_base && event_type == sync_event_alarm_notify) {
+                    xcb_sync_alarm_notify_event_t *e = (xcb_sync_alarm_notify_event_t*) event;
+                    FBLOG_TRACE(instance->ext_instance_ref, "Alarm notification received: alarm_value=%lld, counter_value=%lld, state=%hu, timestamp=%u", e->alarm_value, e->counter_value, e->state, e->timestamp);
                 } else {
                     FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x (%hu)", event->response_type, event->response_type);
                 }
@@ -1178,11 +1387,6 @@ static int generate(void *data) {
             if (window_configuration_changed) {
                 FBLOG_INFO(instance->ext_instance_ref, "window size or availability changed, reinitializing");
                 break;
-            }
-            if (use_damage && !update_available) {
-                // TODO: unfortunately XCB does not appear to have a timed method to wait for events, so we need to keep polling or we would not be able to properly shut down if no further events are received
-                //wait_for_events(instance);
-                thrd_yield();
             }
         }
 
@@ -1259,6 +1463,17 @@ static int generate(void *data) {
         FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances during termination");
         free_damages_list(damages);
         damages = NULL;
+    }
+
+    if (alarm_id != -1) {
+        xcb_void_cookie = xcb_sync_destroy_alarm(instance->xcb_conn, alarm_id);
+        xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
+        if (xcb_err) {
+            FBLOG_WARN(instance->ext_instance_ref, "xcb_sync_destroy_alarm failed; X11 error code %hu", xcb_err->error_code);
+            free(xcb_err);
+            xcb_err = NULL;
+        }
+        alarm_id = -1;
     }
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread terminated");
@@ -1431,6 +1646,7 @@ static fberror_t capture_x11_configure_module(void *data, fbcollections_map_entr
     instance->allow_shm = get_config_boolean(instance, "allowSHM", true);
     instance->allow_back_buffer = get_config_boolean(instance, "allowBackBuffer", true);
     instance->allow_damage = get_config_boolean(instance, "allowDamage", true);
+    instance->allow_sync_alarms = get_config_boolean(instance, "allowSyncAlarms", true);
 
     // connect to X server
     if (success) {
