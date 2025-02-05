@@ -666,6 +666,7 @@ static int generate(void *data) {
     bool use_damage = instance->allow_damage;
     bool block_damage = false;
     bool use_shm = instance->allow_shm;
+    bool block_shm = false;
     bool use_sync_alarms = instance->allow_sync_alarms;
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
@@ -725,11 +726,13 @@ static int generate(void *data) {
         if (xcb_err) {
             FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_query_version failed, disabling SHM; X11 error code %hu", xcb_err->error_code);
             use_shm = false;
+            block_shm = true;
             free(xcb_err);
             xcb_err = NULL;
         } else if (!got_shm_query_version_reply) {
             FBLOG_DEBUG(instance->ext_instance_ref, "xcb_shm_query_version returned without reply, disabling SHM");
             use_shm = false;
+            block_shm = true;
         }
     }
 
@@ -862,6 +865,13 @@ static int generate(void *data) {
         if (!use_damage && try_damage) {
             FBLOG_INFO(instance->ext_instance_ref, "retrying to use damage notifications after previous soft failure");
             use_damage = true;
+        }
+
+        // retry SHM as well unless we had a permanent error
+        bool try_shm = instance->allow_shm && !block_shm;
+        if (!use_shm && try_shm) {
+            FBLOG_INFO(instance->ext_instance_ref, "retrying to use SHM");
+            use_shm = true;
         }
 
         // window may not be immediately available, wait until it appears
@@ -1079,7 +1089,7 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "found unexpected number of colors per channel (%u/%u/%u) - display mode may not use full color range which can lead to issues", max_red, max_green, max_blue);
         }
 
-        // create SHM XImage structure
+        // prepare SHM registration to X server
         if (use_shm) {
             instance->shm_info.shmseg = xcb_generate_id(instance->xcb_conn);
             if (instance->shm_info.shmseg == -1) {
@@ -1099,13 +1109,14 @@ static int generate(void *data) {
             } else {
                 FBLOG_WARN(instance->ext_instance_ref, "shmget failed (%d %s), disabling SHM support", errno, strerror(errno));
                 use_shm = false;
+                block_shm = true;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
             }
         }
 
-        // attach this process to the memory segment and set active on XImage if successful
+        // attach this process to the memory segment
         if (use_shm) {
             void *shm_addr = shmat((int) instance->shm_info.shmid, NULL, 0);
             if (shm_addr && (shm_addr != (void*)-1)) {
@@ -1115,6 +1126,7 @@ static int generate(void *data) {
                 // NOTE: only -1 is specified as an error indication but a null pointer probably does not make either
                 FBLOG_WARN(instance->ext_instance_ref, "shmat failed (errno %d), disabling SHM support", errno);
                 use_shm = false;
+                block_shm = true;
                 if (!shm_reset(instance, "failed initialization")) {
                     break;
                 }
@@ -1144,6 +1156,7 @@ static int generate(void *data) {
             } else {
                 FBLOG_WARN(instance->ext_instance_ref, "xcb_shm_attach_checked failed, disabling SHM support; X11 error code %hu", xcb_err->error_code);
                 use_shm = false;
+                block_shm = true;
                 free(xcb_err);
                 xcb_err = NULL;
                 if (!shm_reset(instance, "failed initialization")) {
@@ -1442,6 +1455,7 @@ static int generate(void *data) {
 
         if (use_shm && !shm_reset(instance, "reinitialization")) {
             FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
+            block_shm = true;
             break;
         }
 
