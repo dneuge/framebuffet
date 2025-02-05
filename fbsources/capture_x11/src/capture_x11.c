@@ -1286,11 +1286,10 @@ static int generate(void *data) {
                 clock_t benchUnlocked = clock(); // DEBUG
 
                 framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
-                clock_t benchPublished = clock(); // DEBUG
 
                 clock_t benchDone = clock(); // DEBUG
 
-                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %.2fms = %.1f FPS, XImage %.2f, convert %.2f, transfer %.2f, notify %.2f, destroy %.2f | use_shm=%d, use_damage=%d, back buffer? %d", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchPublished-benchUnlocked), clock2ms(benchDone-benchPublished), use_shm, use_damage, back_buffer_pixmap_available);
+                FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %5.2fms = %5.1f FPS | grab %5.2f, convert %5.2f, transfer %.2f, publish %4.2f [%c%c%c%c]", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchDone-benchUnlocked), use_shm ? 'S' : 's', use_damage ? 'D' : 'd', back_buffer_pixmap_available ? 'B' : 'b', use_sync_alarms ? 'A' : 'a');
 
                 processed_image = true;
             }
