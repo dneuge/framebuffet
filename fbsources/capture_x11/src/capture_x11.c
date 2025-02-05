@@ -633,6 +633,13 @@ static bool find_system_counter(const fbsource_capture_x11_t *instance, const ch
     return found;
 }
 
+static void clear_all_events(xcb_connection_t *xcb_conn) {
+    xcb_generic_event_t *event;
+    while ((event = xcb_poll_for_event(xcb_conn)) != NULL) {
+        free(event);
+    }
+}
+
 static int generate(void *data) {
     const xcb_image_format_t format = XCB_IMAGE_FORMAT_Z_PIXMAP;
 
@@ -657,6 +664,7 @@ static int generate(void *data) {
     bool got_damage_event_base = false;
     bool got_sync_event_base = false;
     bool use_damage = instance->allow_damage;
+    bool block_damage = false;
     bool use_shm = instance->allow_shm;
     bool use_sync_alarms = instance->allow_sync_alarms;
 
@@ -732,6 +740,7 @@ static int generate(void *data) {
         } else {
             FBLOG_WARN(instance->ext_instance_ref, "X11 does not seem to have damage extension, disabling");
             use_damage = false;
+            block_damage = true;
         }
     }
 
@@ -742,6 +751,7 @@ static int generate(void *data) {
             if ((damage_query_version_reply->major_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || ((damage_query_version_reply->major_version == FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) && (damage_query_version_reply->minor_version < FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR))) {
                 FBLOG_WARN(instance->ext_instance_ref, "XDamage version is too old, reported %d.%d, expected at least %d.%d, disabling", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
                 use_damage = false;
+                block_damage = true;
             } else if ((damage_query_version_reply->major_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR) || (damage_query_version_reply->minor_version != FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR)) {
                 FBLOG_INFO(instance->ext_instance_ref, "XDamage version is more recent than tested with this plugin, reported %d.%d, expected %d.%d", damage_query_version_reply->major_version, damage_query_version_reply->minor_version, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MAJOR, FBSOURCE_CAPX11_XDAMAGE_EXPECTED_MINOR);
             }
@@ -755,11 +765,13 @@ static int generate(void *data) {
         if (xcb_err) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version failed, disabling; X11 error code %hu", xcb_err->error_code);
             use_damage = false;
+            block_damage = true;
             free(xcb_err);
             xcb_err = NULL;
         } else if (!got_damage_query_version_reply) {
             FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_query_version returned no reply, disabling");
             use_damage = false;
+            block_damage = true;
         }
     }
 
@@ -844,6 +856,14 @@ static int generate(void *data) {
 
     // outer loop is used to reinitialize on source reconfiguration
     while (!instance->stop_generator) {
+        // damage extension may have previously failed because the window was gone while processing notifications
+        // re-enable if possible
+        bool try_damage = instance->allow_damage && !block_damage;
+        if (!use_damage && try_damage) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "retrying to use damage notifications after previous soft failure");
+            use_damage = true;
+        }
+
         // window may not be immediately available, wait until it appears
         success = false;
         processed_image = false;
@@ -1139,6 +1159,11 @@ static int generate(void *data) {
         }
 
         // listen for events
+        if (!destroy_damages(instance, &damages)) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some previous XDamage instances on reconfiguration; disabling");
+            use_damage = false;
+        }
+        clear_all_events(instance->xcb_conn); // avoid seeing old events from previous run (avoids damage notifications breaking immediately)
         uint32_t subscribe_event_mask_values[] = { XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY };
         xcb_void_cookie = xcb_change_window_attributes_checked(instance->xcb_conn, instance->window, XCB_CW_EVENT_MASK, &subscribe_event_mask_values);
         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
@@ -1146,11 +1171,6 @@ static int generate(void *data) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to subscribe to window changes; changes in size will not be detected");
             free(xcb_err);
             xcb_err = NULL;
-        }
-        if (!destroy_damages(instance, &damages)) {
-            FBLOG_WARN(instance->ext_instance_ref, "failed to unregister some XDamage instances on reconfiguration");
-            free_damages_list(damages);
-            damages = NULL;
         }
         if (use_damage) {
             damages = create_damages(instance, instance->window, true);
@@ -1280,8 +1300,6 @@ static int generate(void *data) {
                 get_image_reply = NULL;
             }
 
-            // FIXME: make sure we unblock after a certain time (queue an "alarm"?)
-
             // process events
             // Get the first event and process it. At the end poll the next already queued event,
             // until all have been processed (event becomes NULL).
@@ -1328,7 +1346,6 @@ static int generate(void *data) {
                         xcb_void_cookie = xcb_damage_subtract_checked(instance->xcb_conn, e->damage, XCB_NONE, XCB_NONE);
                         xcb_err = xcb_request_check(instance->xcb_conn, xcb_void_cookie);
                         if (xcb_err) {
-                            // FIXME: this happens way too often, check why; reproduce: with compositing on have source viewer and captured window on separate virtual desktops, change window to trigger reinitialization, come back => subtract failed, probably because window changed while processing damage - we should not disable damage in that case!
                             FBLOG_WARN(instance->ext_instance_ref, "xcb_damage_subtract_checked failed to process update to 0x%08x, disabling XDamage; X11 error code %hu", e->drawable, xcb_err->error_code);
                             use_damage = false;
                             if (!destroy_damages(instance, &damages)) {
