@@ -1460,7 +1460,7 @@ static int generate(void *data) {
 
     fberror_t out_err = instance->stop_generator ? FBERROR_NONE : FBERROR_UNSPECIFIC;
 
-    if (use_shm && !shm_reset(instance, "termination")) {
+    if (instance->allow_shm && !shm_reset(instance, "termination")) {
         FBLOG_WARN(instance->ext_instance_ref, "SHM reset failed, terminating");
         out_err = FBERROR_UNSPECIFIC;
     }
