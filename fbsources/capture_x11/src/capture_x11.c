@@ -860,7 +860,7 @@ static int generate(void *data) {
         // re-enable if possible
         bool try_damage = instance->allow_damage && !block_damage;
         if (!use_damage && try_damage) {
-            FBLOG_DEBUG(instance->ext_instance_ref, "retrying to use damage notifications after previous soft failure");
+            FBLOG_INFO(instance->ext_instance_ref, "retrying to use damage notifications after previous soft failure");
             use_damage = true;
         }
 
