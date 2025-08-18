@@ -1732,8 +1732,8 @@ static fberror_t build_configuration_from_json_action(framebuffet_t *framebuffet
         goto end;
     }
 
-    if (!cJSON_IsObject(json_config) || (cJSON_GetArraySize(json_config) < 1)) {
-        FBLOG_WARN("\"config\" must be a non-empty object, if set");
+    if (!cJSON_IsObject(json_config)) {
+        FBLOG_WARN("\"config\" must be an object, if set");
         err = FBERROR_UNSPECIFIC;
         goto end;
     }
