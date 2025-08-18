@@ -1421,13 +1421,16 @@ static fberror_t merge_copy_latest_frame(void *data, unsigned char *destination,
     if (mtx_lock(&instance->mutex) != thrd_success) {
         return FBERROR_UNSPECIFIC;
     }
-  
-    if (instance->buffer_size <= 0) {
+
+    unsigned char *buffer = instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID];
+    if (!buffer) {
+        out_error = FBERROR_NO_FRAME;
+    } else if (instance->buffer_size <= 0) {
         out_error = FBERROR_UNSPECIFIC;
     } else if (buffer_size < instance->buffer_size) {
         out_error = FBERROR_BUFFER_TOO_SMALL;
     } else {
-        memcpy(destination, instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID], instance->buffer_size);
+        memcpy(destination, buffer, instance->buffer_size);
         *token = instance->frame_token;
     }
 
