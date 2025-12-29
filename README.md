@@ -24,7 +24,23 @@ Building is currently only supported from a Linux environment. If you're not on 
 
 A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
 
+Compilation with Clang (17 or later) is recommended but GCC and MinGW (for Windows) should work as well. Note that the compiler and its environment may have an impact on licensing terms when distributing binaries. Proper licensing is the sole responsibility of developers using this library in their projects; this project cannot (and will not) give any advice in that regard.
+
 Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below. In addition, X11 dependencies need to be globally available on the build environment.
+
+#### Old Clang incompatibility
+
+Clang before version 17 cannot be used to build source modules as it does not regard constant function references as compile-time constants.
+Compilation will abort with the following error which appears to have been a compiler bug which is fixed in Clang 17 and later:
+
+```
+error: initializer element is not a compile-time constant
+FBSOURCE_MODULE_DESCRIPTOR(dummy, "Dummy", FBMODULE_LICENSE_MIT, dummy_module)
+                                                                 ^~~~~~~~~~~~
+note: expanded from macro 'FBSOURCE_MODULE_DESCRIPTOR'
+        .ops = moduleops                                                \
+               ^~~~~~~~~
+```
 
 ### Build scripts
 
