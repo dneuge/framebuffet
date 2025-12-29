@@ -321,13 +321,13 @@ typedef struct {
 typedef fbsource_module_t (*fbsource_init_f)(void);
 
 #define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
-    static char _fbsource_module_name__##descriptorid[]=modulename;     \
-    static char _fbsource_module_license__##descriptorid[]=modulelicense; \
+    static const char _fbsource_module_name__##descriptorid[]=modulename;     \
+    static const char _fbsource_module_license__##descriptorid[]=modulelicense; \
     const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
     const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
         .api_version = FRAMEBUFFET_MODULE_API_VERSION,                  \
-        .name = _fbsource_module_name__##descriptorid,                  \
-        .license = _fbsource_module_license__##descriptorid,            \
+        .name = (char*) _fbsource_module_name__##descriptorid,          \
+        .license = (char*) _fbsource_module_license__##descriptorid,    \
         .ops = moduleops                                                \
     };
 
@@ -336,12 +336,12 @@ typedef fbsource_module_t (*fbsource_init_f)(void);
    else linking more than one module together will break */
 #undef FBSOURCE_MODULE_DESCRIPTOR
 #define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
-    static char _fbsource_module_name__##descriptorid[]=modulename;     \
-    static char _fbsource_module_license__##descriptorid[]=modulelicense; \
+    static const char _fbsource_module_name__##descriptorid[]=modulename;     \
+    static const char _fbsource_module_license__##descriptorid[]=modulelicense; \
     const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
         .api_version = FRAMEBUFFET_MODULE_API_VERSION,                  \
-        .name = _fbsource_module_name__##descriptorid,                  \
-        .license = _fbsource_module_license__##descriptorid,            \
+        .name = (char*) _fbsource_module_name__##descriptorid,          \
+        .license = (char*) _fbsource_module_license__##descriptorid,    \
         .ops = moduleops                                                \
     };
 #endif
