@@ -1,5 +1,5 @@
---- a/libjpeg-turbo/cmakescripts/BuildPackages.cmake  2022-08-08 21:03:55.000000000 +0000
-+++ b/libjpeg-turbo/cmakescripts/BuildPackages.cmake  2022-12-16 21:12:10.268409647 +0000
+--- a/libjpeg_turbo/cmakescripts/BuildPackages.cmake  2022-08-08 21:03:55.000000000 +0000
++++ b/libjpeg_turbo/cmakescripts/BuildPackages.cmake  2022-12-16 21:12:10.268409647 +0000
 @@ -171,6 +171,6 @@
    pkgscripts/${CMAKE_PROJECT_NAME}ConfigVersion.cmake
    VERSION ${VERSION} COMPATIBILITY AnyNewerVersion)

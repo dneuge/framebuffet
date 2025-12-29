@@ -115,7 +115,7 @@ cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (
 echo
 
 echo "==== Building libjpeg-turbo ===="
-cd_real_path "${script_dir}/lib/libjpeg-turbo"
+cd_real_path "${script_dir}/lib/libjpeg_turbo"
 [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
 mkdir build || die "libjpeg-turbo mkdir failed"
 cd build
