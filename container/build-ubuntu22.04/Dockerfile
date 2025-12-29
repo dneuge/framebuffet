@@ -9,12 +9,19 @@ ARG DOCKER_BUILD_ID
 ## base system
 RUN apt -y update \
     && apt -y upgrade
+    
+# we need Clang 17 which needs to be downloaded from LLVM as Ubuntu 22.04 only has version 15 at most
+# ca-certificates has to be installed before we can connect to the LLVM repository
+RUN apt -y install ca-certificates
+COPY files/usr/share/keyrings/* /usr/share/keyrings/
+COPY files/etc/apt/sources.list.d/* /etc/apt/sources.list.d/
+RUN apt -y update
 
 RUN apt -y install \
     7zip \
     autoconf \
     build-essential \
-    clang \
+    clang-17 \
     cmake \
     curl \
     git \
@@ -33,6 +40,14 @@ RUN apt -y install \
     xserver-xorg-dev \
     xutils-dev \
     wget
+
+# symlink Clang 17 to be the default version
+RUN ln -s "$(which clang-17)" /etc/alternatives/clang && \
+    ln -s "$(which clang-cpp-17)" /etc/alternatives/clang-cpp && \
+    ln -s "$(which 'clang++-17')" /etc/alternatives/'clang++' && \
+    ln -s /etc/alternatives/clang /usr/bin/ && \
+    ln -s /etc/alternatives/clang-cpp /usr/bin/ && \
+    ln -s /etc/alternatives/'clang++' /usr/bin/
 
 ## directory structure
 RUN mkdir /builds

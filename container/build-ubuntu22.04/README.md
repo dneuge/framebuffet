@@ -10,7 +10,7 @@ Base:
 Primary:
  - "build-essential"
  - autoconf (incl. `autoreconf`)
- - Clang
+ - Clang 17 (from [LLVM APT repository](https://apt.llvm.org))
  - GCC 10
  - MinGW
  - NASM

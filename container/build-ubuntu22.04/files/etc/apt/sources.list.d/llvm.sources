@@ -1,0 +1,11 @@
+Types: deb
+URIs: http://apt.llvm.org/jammy/
+Suites: llvm-toolchain-jammy-17
+Components: main
+Signed-By: /usr/share/keyrings/llvm-snapshot.gpg.key
+
+Types: deb-src
+URIs: http://apt.llvm.org/jammy/
+Suites: llvm-toolchain-jammy-17
+Components: main
+Signed-By: /usr/share/keyrings/llvm-snapshot.gpg.key
