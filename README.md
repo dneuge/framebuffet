@@ -16,7 +16,7 @@ The framework is in early development. The API is *not stable* yet and may chang
 
 Builds are currently only supported on Linux, with cross-compilation support from Linux for Windows.
 
-There are currently no plans for Mac builds as the target platform is unavailable to the developer(s). If you would like to volunteer for taking care of maintaining and testing Mac builds please contact the project.
+Environment variables `CC` (to select a C compiler) and `CPP_COMPILER` (to select a C++ compiler) are honored and can be used to override automated compiler selection. If not set, Linux builds will be compiled using Clang or GCC, if Clang is unavailable. When targeting Windows, MinGW will be used when compiling on Linux.
 
 ### Prerequisites
 

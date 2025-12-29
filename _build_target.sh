@@ -41,20 +41,21 @@ elif [[ "${BUILD_TARGET}" == "windows" ]]; then
 	fi
 fi
 
-override_distribution_restrictions=0
-if [[ "${I_WILL_NOT_DISTRIBUTE_BUILD_RESULTS:-False}" == "1" || "${I_WILL_NOT_DISTRIBUTE_BUILD_RESULTS:-False}" == "True" ]]; then
-  override_distribution_restrictions=1
+has_clang=1
+clang --version || has_clang=0
+if [[ $has_clang -ne 0 ]]; then
+	default_cc="clang"
+	default_cpp_compiler="clang++"
+else
+	default_cc="gcc"
+	default_cpp_compiler="g++"
 fi
-
-CC="clang"
-CPP_COMPILER="clang++"
 if [[ "${BUILD_TARGET}" == "windows" ]]; then
-  if [[ $override_distribution_restrictions -eq 1 ]]; then
-    echo "!!! ENABLING MINGW COMPILATION WHICH VOIDS LICENSE CONFORMITY; DO NOT DISTRIBUTE BUILD RESULTS !!!"
-    CC="x86_64-w64-mingw32-gcc"
-    CPP_COMPILER="x86_64-w64-mingw32-g++"
-  fi
+	default_cc="x86_64-w64-mingw32-gcc"
+	default_cpp_compiler="x86_64-w64-mingw32-g++"
 fi
+CC=${CC:-$default_cc}
+CPP_COMPILER=${CPP_COMPILER:-$default_cpp_compiler}
 export CC
 export CPP_COMPILER
 
@@ -63,6 +64,7 @@ if [[ "${CMAKE_TOOLCHAIN_FILE}" != "" ]]; then
 	CMAKE_TOOLCHAIN_FILE=$(realpath "${CMAKE_TOOLCHAIN_FILE}")
 fi
 
+echo
 echo "Build target: ${BUILD_TARGET}"
 if [[ "${CMAKE_TOOLCHAIN_FILE}" != "" ]]; then
 	echo "  applying CMake toolchain: ${CMAKE_TOOLCHAIN_FILE}"
@@ -70,4 +72,6 @@ if [[ "${CMAKE_TOOLCHAIN_FILE}" != "" ]]; then
 else
 	echo "  no CMake toolchain"
 fi
+echo "  CC:           $CC"
+echo "  CPP_COMPILER: $CPP_COMPILER"
 echo
