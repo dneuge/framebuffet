@@ -25,8 +25,7 @@ else
 fi
 mkdir -p lib/_build
 
-num_cpus=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
-num_jobs=$(( $num_cpus + 1 ))
+num_jobs=$(( $NUM_CPUS + 1 ))
 
 # MinGW misses some C11 compatibility, most notably threads.h which is extensively used throughout Frame Buffet
 # Mesa seems to have the best maintained C11 compatibility wrapper available, so we borrow that but only if we

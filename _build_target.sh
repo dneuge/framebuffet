@@ -59,6 +59,8 @@ CPP_COMPILER=${CPP_COMPILER:-$default_cpp_compiler}
 export CC
 export CPP_COMPILER
 
+NUM_CPUS=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
+
 # normalize paths
 if [[ "${CMAKE_TOOLCHAIN_FILE}" != "" ]]; then
 	CMAKE_TOOLCHAIN_FILE=$(realpath "${CMAKE_TOOLCHAIN_FILE}")
