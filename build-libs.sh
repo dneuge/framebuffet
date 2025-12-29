@@ -77,10 +77,10 @@ cd_real_path "${script_dir}/lib/cjson"
 mkdir build || die "cJSON mkdir failed"
 cd build
 cmake \
-    -DBUILD_SHARED_AND_STATIC_LIBS=On \
-    -DENABLE_CJSON_TEST=Off \
-    -DENABLE_PUBLIC_SYMBOLS=Off \
-    -DENABLE_HIDDEN_SYMBOLS=On \
+    -D BUILD_SHARED_AND_STATIC_LIBS=On \
+    -D ENABLE_CJSON_TEST=Off \
+    -D ENABLE_PUBLIC_SYMBOLS=Off \
+    -D ENABLE_HIDDEN_SYMBOLS=On \
     .. || die "cJSON CMake failed"
 make -j$num_jobs || die "cJSON make failed"
 cp -a libcjson.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
@@ -93,7 +93,7 @@ cd_real_path "${script_dir}/lib/zlib"
 [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
 mkdir build || die "zlib mkdir failed"
 cd build
-cmake -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "zlib CMake failed"
+cmake -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "zlib CMake failed"
 make -j$num_jobs || die "zlib make failed"
 cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
 cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
@@ -106,7 +106,7 @@ cd_real_path "${script_dir}/lib/lzo"
 [[ -d build ]] && (rm -Rf build || die "lzo clean failed")
 mkdir build || die "lzo mkdir failed"
 cd build
-cmake -DENABLE_SHARED=ON .. || die "lzo CMake failed"
+cmake -D ENABLE_SHARED=ON .. || die "lzo CMake failed"
 make -j$num_jobs || die "lzo make failed"
 cp -a liblzo2.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
 cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (2)"
@@ -119,7 +119,7 @@ cd_real_path "${script_dir}/lib/libjpeg_turbo"
 [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
 mkdir build || die "libjpeg-turbo mkdir failed"
 cd build
-cmake -DENABLE_SHARED=ON -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
+cmake -D ENABLE_SHARED=ON -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
 make -j$num_jobs || die "libjpeg-turbo make failed"
 cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
 cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
@@ -135,22 +135,22 @@ function build_libvncclient {
     mkdir build || die "VNC mkdir failed"
     cd build
     cmake \
-        -DWITH_PNG=OFF \
-        -DWITH_SDL=OFF \
-        -DWITH_GTK=OFF \
-        -DWITH_LIBSSH2=OFF \
-        -DWITH_GNUTLS=OFF \
-        -DWITH_OPENSSL=OFF \
-        -DWITH_SYSTEMD=OFF \
-        -DWITH_GCRYPT=OFF \
-        -DWITH_FFMPEG=OFF \
-        -DWITH_TIGHTVNC_FILETRANSFER=OFF \
-        -DWITH_WEBSOCKETS=OFF \
-        -DWITH_SASL=OFF \
-        -DWITH_EXAMPLES=OFF \
-        -DBUILD_SHARED_LIBS=$1 \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE \
-        -DCMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
+        -D WITH_PNG=OFF \
+        -D WITH_SDL=OFF \
+        -D WITH_GTK=OFF \
+        -D WITH_LIBSSH2=OFF \
+        -D WITH_GNUTLS=OFF \
+        -D WITH_OPENSSL=OFF \
+        -D WITH_SYSTEMD=OFF \
+        -D WITH_GCRYPT=OFF \
+        -D WITH_FFMPEG=OFF \
+        -D WITH_TIGHTVNC_FILETRANSFER=OFF \
+        -D WITH_WEBSOCKETS=OFF \
+        -D WITH_SASL=OFF \
+        -D WITH_EXAMPLES=OFF \
+        -D BUILD_SHARED_LIBS=$1 \
+        -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE \
+        -D CMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
         .. || die "VNC CMake failed"
     make -j$num_jobs || die "VNC make failed"
     
