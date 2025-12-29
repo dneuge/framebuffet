@@ -13,7 +13,7 @@ function die {
 }
 
 function cd_real_path {
-    cd "$(realpath -e "$1")" || die "Failed to change into real path of $1"
+    cd "$(realpath "$1")" || die "Failed to change into real path of $1"
 }
 
 source ./_build_target.sh || die "Failed to include build target script"
@@ -26,6 +26,12 @@ fi
 mkdir -p lib/_build
 
 num_jobs=$(( $NUM_CPUS + 1 ))
+
+MULTIARCH_FLAGS=""
+if [[ "${BUILD_TARGET}" == "macos" ]]; then
+    MULTIARCH_FLAGS="-arch x86_64 -arch arm64"
+fi
+
 
 # MinGW misses some C11 compatibility, most notably threads.h which is extensively used throughout Frame Buffet
 # Mesa seems to have the best maintained C11 compatibility wrapper available, so we borrow that but only if we
@@ -81,9 +87,10 @@ cmake \
     -D ENABLE_CJSON_TEST=Off \
     -D ENABLE_PUBLIC_SYMBOLS=Off \
     -D ENABLE_HIDDEN_SYMBOLS=On \
+    -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
     .. || die "cJSON CMake failed"
 make -j$num_jobs || die "cJSON make failed"
-cp -a libcjson.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
+cp -a libcjson*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
 cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (2)"
 cp -a ../cJSON.h "${script_dir}/lib/_build/" || die "cJSON copy failed (3)"
 echo
@@ -93,7 +100,7 @@ cd_real_path "${script_dir}/lib/zlib"
 [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
 mkdir build || die "zlib mkdir failed"
 cd build
-cmake -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "zlib CMake failed"
+cmake -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" .. || die "zlib CMake failed"
 make -j$num_jobs || die "zlib make failed"
 cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
 cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
@@ -106,27 +113,49 @@ cd_real_path "${script_dir}/lib/lzo"
 [[ -d build ]] && (rm -Rf build || die "lzo clean failed")
 mkdir build || die "lzo mkdir failed"
 cd build
-cmake -D ENABLE_SHARED=ON .. || die "lzo CMake failed"
+cmake -D ENABLE_SHARED=ON -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" .. || die "lzo CMake failed"
 make -j$num_jobs || die "lzo make failed"
-cp -a liblzo2.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
+cp -a liblzo2*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
 cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (2)"
 mkdir -p "${script_dir}/lib/_build/lzo"
 cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (3)"
 echo
 
-echo "==== Building libjpeg-turbo ===="
-cd_real_path "${script_dir}/lib/libjpeg_turbo"
-[[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
-mkdir build || die "libjpeg-turbo mkdir failed"
-cd build
-cmake -D ENABLE_SHARED=ON -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
-make -j$num_jobs || die "libjpeg-turbo make failed"
-cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
-cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
-cp -a libturbojpeg.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
-cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
-cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
-cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
+if [[ "${BUILD_TARGET}" == "macos" ]]; then
+    echo "==== Skipping libjpeg-turbo (universal binaries cannot be built) ===="
+    # TODO: issues hint at universal binaries being built by upstream project through some kind of post-processing (direct compilation is not possible due to the way assembler code is being integrated) but there is no documentation on how that should be done
+else
+    echo "==== Building libjpeg-turbo ===="
+    cd_real_path "${script_dir}/lib/libjpeg_turbo"
+    [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
+    mkdir build || die "libjpeg-turbo mkdir failed"
+    cd build
+    cmake -D ENABLE_SHARED=ON -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
+    make -j$num_jobs || die "libjpeg-turbo make failed"
+    cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
+    cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
+    cp -a libturbojpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
+    cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
+    cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
+    cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
+fi
+echo
+
+if [[ "${BUILD_TARGET}" != "macos" ]]; then
+    echo "==== Skipping libjpeg (only needed on Mac) ===="
+else
+    echo "==== Building libjpeg ===="
+    cd_real_path "${script_dir}/lib/libjpeg"
+    
+    # see install.txt; alternative to running ./configure
+    cp -a makefile.xc Makefile
+    cp -a jconfig.xc jconfig.h
+    
+    make clean || die "libjpeg clean failed"
+    make || die "libjpeg make failed"
+    cp -a {jpeglib,jconfig,jmorecfg,jpegint,jerror}.h "${script_dir}/lib/_build/" || die "libjpeg copy failed (1)"
+    cp -a libjpeg.a "${script_dir}/lib/_build/" || die "libjpeg copy failed (2)"
+fi
 echo
 
 function build_libvncclient {
@@ -148,9 +177,11 @@ function build_libvncclient {
         -D WITH_WEBSOCKETS=OFF \
         -D WITH_SASL=OFF \
         -D WITH_EXAMPLES=OFF \
+        -D WITH_TESTS=$2 \
         -D BUILD_SHARED_LIBS=$1 \
         -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE \
         -D CMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
+        -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
         .. || die "VNC CMake failed"
     make -j$num_jobs || die "VNC make failed"
     
@@ -170,12 +201,22 @@ function build_libvncclient {
     fi
 }
 
-echo "==== Building libvncclient (dynamically linked) ===="
-build_libvncclient ON
+
+if [[ "${BUILD_TARGET}" == "macos" ]]; then
+    echo "==== Skipping libvncclient (dynamically linked; not available on Mac due to static-only libjpeg) ===="
+else
+    echo "==== Building libvncclient (dynamically linked) ===="
+    build_libvncclient ON ON
+fi
 echo
 
 echo "==== Building libvncclient (statically linked) ===="
-build_libvncclient OFF
+if [[ "${BUILD_TARGET}" == "macos" ]]; then
+    # tests require dynamically linked libjpeg which is unavailable on Mac
+    build_libvncclient OFF OFF
+else
+    build_libvncclient OFF ON
+fi
 echo
 
 if [[ "${BUILD_TARGET}" != "linux" ]]; then
