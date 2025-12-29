@@ -14,6 +14,7 @@ RUN apt -y install \
     7zip \
     autoconf \
     build-essential \
+    clang \
     cmake \
     curl \
     git \

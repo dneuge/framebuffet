@@ -10,6 +10,7 @@ Base:
 Primary:
  - "build-essential"
  - autoconf (incl. `autoreconf`)
+ - Clang
  - GCC 10
  - MinGW
  - NASM
