@@ -100,7 +100,7 @@ function download {
     else
         for patch_file in ${extract_dir}-*.patch; do
             patch_binary=0
-            if grep -F "lib/${patch_file}" "${script_dir}/.gitattributes" | grep -E '\s+-text' >/dev/null 2>&1; then
+            if grep -F "${patch_file}" "${script_dir}/lib/_framebuffet_patch_options.conf" | grep -E '\s+--binary' >/dev/null 2>&1; then
                 patch_binary=1
             fi
             
@@ -201,7 +201,7 @@ function git_unbundle {
     else
         for patch_file in ${extract_dir}-*.patch; do
             patch_binary=0
-            if grep -F "lib/${patch_file}" "${script_dir}/.gitattributes" | grep -E '\s+-text' >/dev/null 2>&1; then
+            if grep -F "${patch_file}" "${script_dir}/lib/_framebuffet_patch_options.conf" | grep -E '\s+--binary' >/dev/null 2>&1; then
                 patch_binary=1
             fi
             

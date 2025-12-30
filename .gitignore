@@ -19,6 +19,7 @@ lib/*
 !lib/CMakeModules
 !lib/*.patch
 !lib/*.patch.disabled
+!_framebuffet_*.conf
 release
 
 user.cfg
