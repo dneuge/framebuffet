@@ -99,8 +99,18 @@ function download {
         echo "no patches found"
     else
         for patch_file in ${extract_dir}-*.patch; do
-            echo "applying ${patch_file}"
-            patch -p1 <"${patch_file}" || die "patch failed"
+            patch_binary=0
+            if grep -F "lib/${patch_file}" "${script_dir}/.gitattributes" | grep -E '\s+-text' >/dev/null 2>&1; then
+                patch_binary=1
+            fi
+            
+            if [[ $patch_binary -ne 0 ]]; then
+                echo "applying ${patch_file} (binary mode)"
+                patch -p1 --binary <"${patch_file}" || die "patch failed"
+            else
+                echo "applying ${patch_file}"
+                patch -p1 <"${patch_file}" || die "patch failed"
+            fi
         done
     fi
 }
@@ -190,8 +200,18 @@ function git_unbundle {
         echo "no patches found"
     else
         for patch_file in ${extract_dir}-*.patch; do
-            echo "applying ${patch_file}"
-            patch -p1 <"${patch_file}" || die "patch failed"
+            patch_binary=0
+            if grep -F "lib/${patch_file}" "${script_dir}/.gitattributes" | grep -E '\s+-text' >/dev/null 2>&1; then
+                patch_binary=1
+            fi
+            
+            if [[ $patch_binary -ne 0 ]]; then
+                echo "applying ${patch_file} (binary mode)"
+                patch -p1 --binary <"${patch_file}" || die "patch failed"
+            else
+                echo "applying ${patch_file}"
+                patch -p1 <"${patch_file}" || die "patch failed"
+            fi
         done
     fi
 }
