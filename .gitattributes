@@ -1,0 +1,2 @@
+# libjpeg unpacks with CRLF line encoding, patch command on OS X has no option to ignore EOL and fails if not encoded the same way
+lib/libjpeg-01-osx-multiarch.patch -text
