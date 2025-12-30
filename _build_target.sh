@@ -83,8 +83,18 @@ export CC
 export CPP_COMPILER
 export CPP_COMPILER_ARGS
 
+if [[ "${NUM_CPUS:-}" != "" ]]; then
+	echo "keeping NUM_CPUS which is already set to ${NUM_CPUS}"
+else
+	if [[ "${HOST_OS_TYPE}" == "MacOS" ]]; then
+		NUM_CPUS=$(sysctl -n hw.ncpu)
+	else
+		NUM_CPUS=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
+	fi
+	echo "NUM_CPUS detected as ${NUM_CPUS}"
+fi
+
 if [[ "${HOST_OS_TYPE}" == "MacOS" ]]; then
-	NUM_CPUS=$(sysctl -n hw.ncpu)
 	cmake_app_bin_path="/Applications/CMake.app/Contents/bin"
 	if which cmake; then
 		echo "CMake binary found on PATH already..."
@@ -94,8 +104,6 @@ if [[ "${HOST_OS_TYPE}" == "MacOS" ]]; then
 	else
 		echo "WARNING: CMake binary not found on PATH and also not in ${cmake_bin_path}"
 	fi
-else
-	NUM_CPUS=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 fi
 
 # normalize paths

@@ -18,6 +18,8 @@ Builds are currently only supported on Linux, with cross-compilation support fro
 
 Environment variables `CC` (to select a C compiler) and `CPP_COMPILER` (to select a C++ compiler) are honored and can be used to override automated compiler selection. If not set, Linux builds will be compiled using Clang or GCC, if Clang is unavailable. When targeting Windows, MinGW will be used when compiling on Linux.
 
+By default, build scripts will attempt to detect the number of CPUs and use all + 1 for compilation (except if anything needs to be built single-threaded). Environment variable `NUM_CPUS` can be used to override auto-detection - setting it to `0` will force single-thread compilation which works around Clang compiler messages being garbled up when printed concurrently.
+
 ### Prerequisites
 
 Building is currently only supported from a Linux environment. If you're not on Linux, you will probably want to use a VM, WSL, Docker container or similar.
