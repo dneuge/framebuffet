@@ -14,7 +14,7 @@ The framework is in early development. The API is *not stable* yet and may chang
 
 ## How to build
 
-Builds are currently only supported on Linux, with cross-compilation support from Linux for Windows.
+Builds are currently only supported on Linux and the macOS® operating system, with cross-compilation support from Linux for Windows using MinGW.
 
 Environment variables `CC` (to select a C compiler) and `CPP_COMPILER` (to select a C++ compiler) are honored and can be used to override automated compiler selection. If not set, Linux builds will be compiled using Clang or GCC, if Clang is unavailable. When targeting Windows, MinGW will be used when compiling on Linux.
 
@@ -22,11 +22,13 @@ By default, build scripts will attempt to detect the number of CPUs and use all 
 
 ### Prerequisites
 
-Building is currently only supported from a Linux environment. If you're not on Linux, you will probably want to use a VM, WSL, Docker container or similar.
+Build scripts require a Bash shell and assume a Linux/Unix-like environment. If you're on Windows, you will probably want to use a VM, WSL, Docker container or similar.
 
 A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
 
 Compilation with Clang (17 or later) is recommended but GCC and MinGW (to target Windows) should work as well. Note that the compiler and its environment may have an impact on licensing terms when distributing binaries. Proper licensing is the sole responsibility of developers using this library in their projects; this project cannot (and will not) give any advice in that regard.
+
+The macOS® operating system can only be targeted using the Xcode® development suite on a genuine Mac® computer. Cross-compilation support from other platforms will not be supported and shall not be discussed unless officially approved by Apple Inc.
 
 Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below. Linux modules also require X11 dependencies to be globally available on the build environment.
 
@@ -43,6 +45,16 @@ note: expanded from macro 'FBSOURCE_MODULE_DESCRIPTOR'
         .ops = moduleops                                                \
                ^~~~~~~~~
 ```
+
+#### C11 Threads support
+
+Frame Buffet relies on C11 Threads. Unfortunately, as of late 2025, some environments still do not support those, so wrappers are used if necessary:
+
+- C11 Threads are natively supported (no wrapper required) when targeting Linux (either with GCC or Clang) or when using a recent Visual Studio to target Windows 10 or later.
+- The macOS® operating system only supports POSIX Threads without wrapping C11 Threads on its own, so a [wrapper](https://github.com/dneuge/c11-threads-compat-for-macos-operating-system) included within this project is being used to supplement the missing translations.
+- MinGW currently does not have the bindings necessary to access C11 Thread support in Windows (e.g. for cross-compilation from Linux). By default, a wrapper extracted from [Mesa](https://mesa3d.org) is used instead.
+
+The wrappers included with Frame Buffet may cause issues when integrating the library into projects that also rely on C11 Threads but use different wrappers. It may be necessary to unify all modules to use a single common wrapper implementation instead when encountering ambiguous symbol references/confusion of wrapper implementations. This also means that, although generally supported, compilation with **MinGW is not recommended** to avoid compatibility issues and overly complex build setups.
 
 ### Build scripts
 
@@ -96,3 +108,7 @@ no tool/model offers traceability nor can today's AI models understand and reaso
 Apart from potential copyright/license violations the quality of AI output is doubtful and generally requires more
 effort to be reviewed and cleaned/fixed than actually contributing original work. Contributors will be asked to confirm
 and permanently record compliance with these guidelines.
+
+## Acknowledgements
+
+Mac, macOS and Xcode are trademarks of Apple Inc., registered in the U.S. and other countries and regions.

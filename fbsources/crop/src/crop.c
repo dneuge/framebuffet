@@ -4,11 +4,15 @@
 
 #ifndef NEED_C11_THREADS_WRAPPER
 #include <time.h>
-#include <threads.h>
 #else
+#ifdef TARGET_WINDOWS
 #include <c11/time.h>
-#include <c11/threads.h>
+#else
+#include <time.h>
 #endif
+#endif
+
+#include "threads_compat.h"
 
 #include "../../../framework/src/framebuffet.h"
 #include "../../../framework/src/fbutil.h"
