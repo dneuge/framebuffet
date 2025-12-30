@@ -191,13 +191,13 @@ function build_libvncclient {
     
     if [[ "$1" == "ON" ]]; then
         # dynamically linked
-        cp -a libvncclient.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+        cp -a libvncclient*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+    else
+        # statically linked
+        cp -a libvncclient.a* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
         mkdir -p "${script_dir}/lib/_build/rfb"
         cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (2)"
         cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (3)"
-    else
-        # statically linked
-        cp -a libvncclient.a* "${script_dir}/lib/_build/" || die "VNC copy failed"
     fi
 }
 
