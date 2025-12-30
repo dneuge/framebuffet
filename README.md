@@ -26,9 +26,9 @@ Building is currently only supported from a Linux environment. If you're not on 
 
 A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
 
-Compilation with Clang (17 or later) is recommended but GCC and MinGW (for Windows) should work as well. Note that the compiler and its environment may have an impact on licensing terms when distributing binaries. Proper licensing is the sole responsibility of developers using this library in their projects; this project cannot (and will not) give any advice in that regard.
+Compilation with Clang (17 or later) is recommended but GCC and MinGW (to target Windows) should work as well. Note that the compiler and its environment may have an impact on licensing terms when distributing binaries. Proper licensing is the sole responsibility of developers using this library in their projects; this project cannot (and will not) give any advice in that regard.
 
-Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below. In addition, X11 dependencies need to be globally available on the build environment.
+Some modules require external dependencies which can be downloaded and built (confined to the project) automatically as described below. Linux modules also require X11 dependencies to be globally available on the build environment.
 
 #### Old Clang incompatibility
 
