@@ -45,21 +45,6 @@ elif [[ "${BUILD_TARGET}" != "linux" ]]; then
 fi
 export BUILD_TARGET_DYNLIB_EXT
 
-CMAKE_TOOLCHAIN_FILE=""
-if [[ "${CMAKE_TOOLCHAIN_FILE:-}" != "" ]]; then
-	echo "Using user-provided CMake toolchain: ${CMAKE_TOOLCHAIN_FILE}"
-elif [[ "${BUILD_TARGET}" == "linux" ]]; then
-	CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-generic_linux-linux-x86_64-clang.cmake"
-elif [[ "${BUILD_TARGET}" == "windows" ]]; then
-	if [[ "${HOST_OS_NAME} ${HOST_OS_VERSION}" == "Ubuntu jammy" ]]; then
-		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-ubuntu22.04-windows-x86_64-mingw.cmake"
-	elif [[ "${HOST_OS_NAME}" == "Windows" ]]; then
-		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-windows_github-windows-x86_64-msvc_clang.cmake"
-	else
-		die "Missing CMake toolchain for ${HOST_OS_NAME} ${HOST_OS_VERSION} (target: ${BUILD_TARGET})"
-	fi
-fi
-
 default_cpp_compiler_args=''
 has_clang=1
 clang --version || has_clang=0
@@ -92,6 +77,25 @@ else
 		NUM_CPUS=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 	fi
 	echo "NUM_CPUS detected as ${NUM_CPUS}"
+fi
+
+CMAKE_TOOLCHAIN_FILE=""
+if [[ "${CMAKE_TOOLCHAIN_FILE:-}" != "" ]]; then
+	echo "Using user-provided CMake toolchain: ${CMAKE_TOOLCHAIN_FILE}"
+elif [[ "${BUILD_TARGET}" == "linux" ]]; then
+	if [[ "$CC" == "clang" ]]; then
+		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-generic_linux-linux-x86_64-clang.cmake"
+	elif [[ "$CC" == "gcc" ]]; then
+		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-generic_linux-linux-x86_64-gcc.cmake"
+	fi
+elif [[ "${BUILD_TARGET}" == "windows" ]]; then
+	if [[ "${HOST_OS_NAME} ${HOST_OS_VERSION}" == "Ubuntu jammy" ]]; then
+		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-ubuntu22.04-windows-x86_64-mingw.cmake"
+	elif [[ "${HOST_OS_NAME}" == "Windows" ]]; then
+		CMAKE_TOOLCHAIN_FILE="${root_dir}/TC-windows_github-windows-x86_64-msvc_clang.cmake"
+	else
+		die "Missing CMake toolchain for ${HOST_OS_NAME} ${HOST_OS_VERSION} (target: ${BUILD_TARGET})"
+	fi
 fi
 
 if [[ "${HOST_OS_TYPE}" == "MacOS" ]]; then
