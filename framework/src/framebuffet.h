@@ -5,7 +5,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// hide compatibility layer unless building actual framework artifact (not needed by framework users)
+#ifdef BUILD_FRAMEBUFFET_FRAMEWORK
 #include "threads_compat.h"
+#endif
 
 #include "fbcollections.h"
 #include "fbutil.h"
@@ -155,13 +158,23 @@ typedef struct {
     fbcollections_map_entry_t *configurations;
     fbcollections_map_entry_t *sources;
 
-    // this root-level mutex is only used to protect main data structures,
-    // not for frame updates or logging
-    mtx_t mutex;
-
     fblog_receiver_f log_receiver;
     fblog_level_t minimum_log_level;
     bool destruction_pending;
+    
+    // mtx_t has to be hidden to avoid compatibility layers being
+    // depended on when including this header file from elsewhere
+    // so we replace it with a placeholder unless compiling the
+    // actual framework artifact
+    union {
+        uint8_t _reserved[64];
+        
+#ifdef BUILD_FRAMEBUFFET_FRAMEWORK
+        // this root-level mutex is only used to protect main data structures,
+        // not for frame updates or logging
+        mtx_t mutex;
+#endif
+    };
 } framebuffet_t;
 
 typedef struct {
