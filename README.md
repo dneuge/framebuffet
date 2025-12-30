@@ -63,6 +63,7 @@ The build scripts support some optional environment variables:
 | ------ | -------- | ------ |
 | `fetch-libs.sh` | `FBFETCHLIBS_DOWNLOAD_ONLY=1` | files will only be downloaded, not extracted (useful for CI cache updates) |
 | `build-libs.sh` | `FBBUILDLIBS_KEEP_BUILD=1` | dependency build target directory `lib/_build` will not be deleted (useful for inclusion to other projects) |
+| `build-libs.sh`, `build.sh` | `NUM_CPUS` | overrides automatically detected number of CPUs to use, set to `0` to force single-threaded compilation |
 
 ## How to develop
 
