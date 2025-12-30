@@ -167,7 +167,7 @@ typedef struct {
     // so we replace it with a placeholder unless compiling the
     // actual framework artifact
     union {
-        uint8_t _reserved[64];
+        uint8_t _reserved_mutex[64];
         
 #ifdef BUILD_FRAMEBUFFET_FRAMEWORK
         // this root-level mutex is only used to protect main data structures,
@@ -367,8 +367,25 @@ typedef struct {
     bool destruction_pending;
 
     fbsource_token_t token;
-    mtx_t mutex;
-    cnd_t wait;
+    
+    // mtx_t and cnd_t have to be hidden to avoid compatibility layers being
+    // depended on when including this header file from elsewhere
+    // so we replace it with a placeholder unless compiling the
+    // actual framework artifact
+    union {
+        uint8_t _reserved_mutex[64];
+        
+#ifdef BUILD_FRAMEBUFFET_FRAMEWORK
+        mtx_t mutex;
+#endif
+    };
+    union {
+        uint8_t _reserved_wait[64];
+        
+#ifdef BUILD_FRAMEBUFFET_FRAMEWORK
+        cnd_t wait;
+#endif
+    };
 } fbsource_module_instance_frame_update_t;
 
 typedef struct {
@@ -380,11 +397,24 @@ typedef struct {
     char *instance_name;
     void *data;
 
-    mtx_t mutex;
     fbsource_module_instance_frame_update_t *frame_updates;
     int num_buffers;
     int num_users;
     bool destruction_pending;
+    
+    // mtx_t has to be hidden to avoid compatibility layers being
+    // depended on when including this header file from elsewhere
+    // so we replace it with a placeholder unless compiling the
+    // actual framework artifact
+    union {
+        uint8_t _reserved_mutex[64];
+        
+#ifdef BUILD_FRAMEBUFFET_FRAMEWORK
+        // this root-level mutex is only used to protect main data structures,
+        // not for frame updates or logging
+        mtx_t mutex;
+#endif
+    };
 } fbsource_module_instance_entry_t;
 
 #ifdef __cplusplus
