@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_runner:
+        description: 'Where should the build be run? (GitHub "runs-on" image/OS definition)'
+        required: true
+      build_target:
+        description: 'platform to target'
+        required: true
+      commit_ref:
+        description: 'commit ref to build'
+        required: true
+      ci_ref:
+        description: 'CI system reference'
+      restore_cache:
+        description: 'Is this run allowed to load cached files?'
+        type: boolean
+      save_cache:
+        description: 'Is this run allowed to save files to cache?'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ${{ github.event.inputs.build_runner }}
+    steps:
+      - name: inputs-echo
+        shell: bash
+        run: |
+          echo '#### JOB PARAMETERS - START'
+          echo 'build_runner=${{ github.event.inputs.build_runner }}'
+          echo 'build_target=${{ github.event.inputs.build_target }}'
+          echo 'commit_ref=${{ github.event.inputs.commit_ref }}'
+          echo 'ci_ref=${{ github.event.inputs.ci_ref }}'
+          echo 'restore_cache=${{ github.event.inputs.restore_cache }}'
+          echo 'save_cache=${{ github.event.inputs.save_cache }}'
+          echo '#### JOB PARAMETERS - END'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_ref }}
+      - name: restore cache
+        id: cache-restore
+        if: "${{ github.event.inputs.restore_cache == 'true' }}"
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            lib/_downloads
+          key: lib_downloads-${{ hashFiles('fetch-libs.sh') }}
+      - name: fetch-libs
+        shell: bash
+        run: ./fetch-libs.sh
+      - name: build-libs
+        shell: bash
+        run: ./build-libs.sh ${{ github.event.inputs.build_target }}
+      - name: build
+        shell: bash
+        run: ./build.sh ${{ github.event.inputs.build_target }}
+      - name: archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release
+          retention-days: 1
+      - name: save cache
+        id: cache-save
+        if: "${{ github.event.inputs.save_cache == 'true' }}"
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            lib/_downloads
+          key: lib_downloads-${{ hashFiles('fetch-libs.sh') }}
