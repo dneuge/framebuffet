@@ -1,0 +1,24 @@
+From 887642c0a93bd8a6616bf90daacac0ea7d4b095e Mon Sep 17 00:00:00 2001
+From: p1k0chu
+Date: Sat, 2 Aug 2025 12:35:38 +0300
+Subject: [PATCH] update max_policy version of cmake to 4.0
+
+this allows users with newer versions of cmake to compile the project
+(since versions below 3.5 are deprecated as of right now)
+
+cmake 3.0 is still supported
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 36a6cb57..d9024e01 100644
+--- a/cjson/CMakeLists.txt
++++ b/cjson/CMakeLists.txt
+@@ -1,5 +1,5 @@
+ set(CMAKE_LEGACY_CYGWIN_WIN32 0)
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.0...4.0)
+ 
+ project(cJSON
+     VERSION 1.7.18

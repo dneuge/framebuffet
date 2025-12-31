@@ -222,7 +222,7 @@ download "libjpeg-turbo" libjpeg_turbo libjpeg-turbo-2.1.4.zip 2667456 https://g
 download "libjpeg" libjpeg libjpeg-9f.zip 1209165 https://www.ijg.org/files/jpegsr9f.zip 6255da8c89e09d694e6800688c76145eb6870a76ac0d36c74fccd61b3940aafa 8bd2706c80ac696856a1334430a6ffd1
 download "LibVNCServer (LibVNCClient)" VNC LibVNCServer-0.9.14.zip 699430 https://github.com/LibVNC/libvncserver/archive/refs/tags/LibVNCServer-0.9.14.zip 43203e89483cbbb43df2c5939412a3f4d7ade0daf9f80005010150d665c83290 d240f0f2dfd4d632b93ddeb66885a007
 download "Mesa" mesa mesa-22.3.1.tar.xz 16972884 https://archive.mesa3d.org/older-versions/22.x/mesa-22.3.1.tar.xz 3c9cd611c0859d307aba0659833386abdca4c86162d3c275ba5be62d16cf31eb 5644bca27c9be0092c98f1ec0e1bedd5
-download "cJSON" cjson cjson-1.7.15.zip 458334 https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.15.zip c55519316d940757ef93a779f1db1ca809dbf979c551861f339d35aaea1c907c c7100b3764d8718284d0d031d10e17d9
+download "cJSON" cjson cjson-1.7.19.zip 461742 https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.19.zip 83fb7750db0601dca735868b8fb1da1318da2d2a1331a9a7da923cb891d26ea9 2431c94b79cfb050da9f04593b153580
 download "xcb-proto" xcb_proto xcb-proto-1.17.0.tar.xz 151748 https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.17.0.tar.xz 2c1bacd2110f4799f74de6ebb714b94cf6f80fb112316b1219480fd22562148c c415553d2ee1a8cea43c3234a079b53f
 download "xcb" xcb libxcb-1.17.0.tar.xz 455208 https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz 599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55 96565523e9f9b701fcb35d31f1d4086e
 git_mirror "xcb-util" freedesktop.libxcb-util.master.bundle https://gitlab.freedesktop.org/xorg/lib/libxcb-util.git master
