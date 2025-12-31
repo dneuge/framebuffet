@@ -1,0 +1,10 @@
+allow all CMake 3.4-4.0 versions to build with CMake 4 (min. 3.5)
+
+--- a/VNC/CMakeLists.txt	2025-12-31 14:11:08
++++ b/VNC/CMakeLists.txt	2025-12-31 14:11:22
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.4)
++cmake_minimum_required(VERSION 3.4...4.0)
+ 
+ project(LibVNCServer VERSION 0.9.14 LANGUAGES C)
+ include(CheckFunctionExists)

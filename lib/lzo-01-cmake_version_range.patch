@@ -1,0 +1,13 @@
+allow all CMake 3.X versions to build with CMake 4 (min. 3.5)
+
+--- a/lzo/CMakeLists.txt	2025-12-31 13:59:28
++++ b/lzo/CMakeLists.txt	2025-12-31 13:59:38
+@@ -8,7 +8,7 @@
+ # All Rights Reserved.
+ #
+ 
+-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
++cmake_minimum_required(VERSION 3.0...4.0 FATAL_ERROR)
+ 
+ #
+ # simple usage example (Unix):
