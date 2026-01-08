@@ -61,7 +61,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release
-          path: release
+          path: |
+            lib/_build/*.dylib
+            framework/release
+            fbsources/*/release
           retention-days: 1
       - name: save cache
         id: cache-save
