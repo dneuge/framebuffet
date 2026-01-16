@@ -44,7 +44,7 @@ It is recommended to start developing for Linux first to keep the code standards
 
 ## Windows
 
-Only compilation with MinGW is currently supported. If you don't have a matching build environment yet, you may want to have a look at the container provided as part of this project (either to use it directly or to base your own setup on it).
+Compilation is supported with MinGW and Visual Studio. If you don't have a build environment for MinGW yet, you may want to have a look at the Linux-based container provided as part of this project (either to use it directly or to base your own setup on it).
 
 ### How to debug
 
@@ -80,7 +80,9 @@ Frame Buffet tries to avoid dependencies for basic functionality while trying to
 - `threads.h` is missing completely (which is a huge problem as it is extensively relied upon by Frame Buffet)
 - `time.h` might be missing some features as well
 
-Development of the core project, at least of the framework, should still rely on C11 standards as much as possible. [Mesa](https://www.mesa3d.org/) contains a C11 compatibility wrapper for Windows. Frame Buffet extracts that wrapper as `libmesa_c11.a` during compilation. It should be linked statically into all code relying on affected C11 features when being compiled for Windows. Refer to existing `CMakeLists.txt` files for details on the setup (an additional define is needed for header inclusion).
+Development of the core project, at least of the framework, should still rely on C11 standards as much as possible. [Mesa](https://www.mesa3d.org/) contains a C11 compatibility wrapper for MinGW. Frame Buffet extracts that wrapper as `libmesa_c11.a` during compilation. It should be linked statically into all code relying on affected C11 features when being compiled with MinGW. Refer to existing `CMakeLists.txt` files for details on the setup (an additional define is needed for header inclusion).
+
+Note that Visual Studio supports all necessary C11 features out of the box as it links to more recent system libraries. Production builds are recommended to be done using Visual Studio, if possible (e.g. using a CI provider in the cloud).
 
 ### DLLs need to know where to get their symbols from at compile-time
 
@@ -99,3 +101,13 @@ On Windows, memory management is handled by unshared C runtime libraries. Depend
 To avoid that issue, memory should only be freed by the same entity which did the allocation. The consequence is that proxies to call `free` might need to be provided by Frame Buffet.
 
 This should not be an issue when implementing source modules unless they exchange data outside the framework in which case they need to take care of it themselves and possibly provide `free` proxies to keep the call local to their own module (and thus C runtime).
+
+### symbols must be flagged for DLL export
+
+When compiled with Visual Studio, all symbols that should be exported must be flagged, unless *all* should be exported in which case CMake's `SET(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS On)` helps to a certain degree (VS appears to still not export symbols imported from other libraries/earlier compiled artifacts). [`framebuffet.h`](framework/src/framebuffet.h) defines a macro `FBLINK_EXPORT` which can be put in front of symbols to be exported.
+
+## compatibility with the macOS® operating system
+
+### dynamically linking source modules with the framework
+
+Source modules need framework symbols but should not actually try to import the framework on their own, instead they are to be loaded into a runtime environment where the framework already exists and that existing "instance" should be used. This is usually achieved by simply leaving those symbols "undefined" when linking. When using the Xcode® development suite for compilation, linker flag `-undefined dynamic_lookup` must be set to disable the default sanity check for complete symbol availability.

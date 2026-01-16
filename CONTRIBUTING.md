@@ -13,7 +13,7 @@ Before contributing code for inclusion to the main repository, please make sure 
   - significant portions of code should not be verbatim copies from forums/knowledge databases such as StackOverflow
   - when basing a contribution off documentation or other (online) sources, make sure to abide by the terms of use set by those sources
     - documentation published by Microsoft on learn.microsoft.com is highly problematic; see the section below on how to work with it
-  - AI must not have been involved in any part of authoring your contribution because the original sources involved in AI training and thus their authors and license conditions are untraceable, bearing a high risk of copyright/license violation
+  - **AI must not have been involved in any part of authoring your contribution** because the original sources involved in AI training and thus their authors and license conditions are untraceable, bearing a high risk of copyright/license violation
 - all commits are made under your full real name (no aliases, no short names) and with a working email address
 - you understand and agree to be listed with that information permanently, unrevokable, as a contributor to the project in the source repository and, at least for larger contributions, accompanying documentation
 - you understand that such information will be copied and archived permanently in uncontrollable ways due to the nature of services used to collaborate on the project, as well as source code repositories and open communication on the Internet in general
@@ -40,7 +40,7 @@ As a general rule of thumb:
 
 ## Use of documentation published by Microsoft
 
-# Why learn.microsoft.com taints the project
+### Why learn.microsoft.com taints the project
 
 In a very welcome move, Microsoft has opened up a lot of technical documentation at https://learn.microsoft.com/. Unfortunately, the [terms of use](https://learn.microsoft.com/en-us/legal/termsofuse) for that website, as of January 2023, are in conflict with software development and open source in particular, so any contribution based on information solely published there is legally tainted. For example:
 
@@ -59,7 +59,7 @@ This project does not currently have any written consent by Microsoft to lift th
 
 As the website has become a commonly encountered source of information when dealing with Windows-specific implementation it is hard to completely avoid it. If you cannot find any other source, you must not make a contribution based off that information.
 
-# How to mitigate
+### How to mitigate
 
 Content published to learn.microsoft.com is based on files published on GitHub which are (for the most part at least) released under open licenses which don't suffer from the restrictions put in place by the website, see: https://github.com/orgs/MicrosoftDocs/repositories?type=all
 
@@ -72,6 +72,6 @@ If a contribution cannot be made without involving documentation from Microsoft:
 - if the license is still compatible at the end, you are free to base your contribution on it and discuss about the contents
   - please mention the source of information and applicable license conditions in your contribution/commit as it will need to be verified to accept the contribution
 
-# How to deal with information about Microsoft products/APIs found on non-Microsoft sources
+### How to deal with information about Microsoft products/APIs found on non-Microsoft sources
 
 Due to the high chance of being legally tainted, all information found regarding Microsoft products and APIs must be verified to originate from untainted sources. This includes research on the Internet to check what other sources can be found and how wide-spread (and how old) knowledge about that information is. It makes sense to start searching on Microsoft's GitHub repository mentioned above for complete official documentation published under a compatible license.

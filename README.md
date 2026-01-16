@@ -14,15 +14,17 @@ The framework is in early development. The API is *not stable* yet and may chang
 
 ## How to build
 
-Builds are currently only supported on Linux and the macOS® operating system, with cross-compilation support from Linux for Windows using MinGW.
+Builds are supported on Linux, the macOS® operating system and Windows (only using Visual Studio on CLI with Git bash, see below), with cross-compilation support from Linux for Windows using MinGW.
 
 Environment variables `CC` (to select a C compiler) and `CPP_COMPILER` (to select a C++ compiler) are honored and can be used to override automated compiler selection. If not set, Linux builds will be compiled using Clang or GCC, if Clang is unavailable. When targeting Windows, MinGW will be used when compiling on Linux.
 
 By default, build scripts will attempt to detect the number of CPUs and use all + 1 for compilation (except if anything needs to be built single-threaded). Environment variable `NUM_CPUS` can be used to override auto-detection - setting it to `0` will force single-thread compilation which works around Clang compiler messages being garbled up when printed concurrently.
 
+Visual Studio is only supported for compilation of Windows binaries on CLI, but (at least currently) not for development. The main purpose is to enable builds on CI platforms which may offer more trouble-free license conditions than MinGW, although native C11 thread support and much smaller binaries are also a nice side-effect. Builds using Visual Studio are, as unconventional as it may be, performed using the same build scripts written for Bash. The easiest way is to install the official Git distribution for Windows which includes "Git Bash". Most CI providers usually have such environments already included in their standard images.
+
 ### Prerequisites
 
-Build scripts require a Bash shell and assume a Linux/Unix-like environment. If you're on Windows, you will probably want to use a VM, WSL, Docker container or similar.
+Build scripts require a Bash shell and assume a Linux/Unix-like environment. If you are on Windows, you will probably want to use a VM, WSL, Docker container or similar. Visual Studio builds can be performed using Git Bash or similar (see above).
 
 A recommended [`Dockerfile`](container/build-ubuntu22.04) based on Ubuntu 22.04 is included within this repository and can be used as a base for customized images.
 
@@ -63,7 +65,7 @@ To build the plugin execute the following scripts in sequence, as needed:
 * [`fetch-libs.sh`](fetch-libs.sh) downloads (and verifies) external dependencies from the Internet into the `lib` directory
 * [`build-libs.sh`](build-libs.sh) builds the external dependencies
 * [`build.sh`](build.sh) builds the framework incl. all modules
-  * [`tools/fbsourceviewer`](tools/fbsourceviewer) will only get built if SDL2 has been installed globally on the host system; compilation for Windows is currently not supported
+  * [`tools/fbsourceviewer`](tools/fbsourceviewer) will only get built if SDL2 has been installed globally on the host system; only tested on Linux
 
 You may also find [`do_all.sh`](do_all.sh) useful which runs all these commands in sequence.
 
