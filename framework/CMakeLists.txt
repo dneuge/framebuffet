@@ -30,6 +30,27 @@ IF(CMAKE_VERSION VERSION_LESS "3.25")
     ENDIF()
 ENDIF()
 
+MESSAGE(STATUS "Detected C compiler: ${CMAKE_C_COMPILER_ID}")
+MESSAGE(STATUS "Detected C++ compiler: ${CMAKE_CXX_COMPILER_ID}")
+
+IF(CMAKE_GENERATOR MATCHES "Visual Studio")
+    MESSAGE(STATUS "Detected Visual Studio")
+    SET(MSVC TRUE)
+
+    # VS should only ever be instructed to do release builds:
+    #   1. debug builds may link against versions of standard libraries which
+    #      cannot be obtained without Visual Studio and do not allow redistribution
+    #   2. debug builds define _ITERATOR_DEBUG_LEVEL to values incompatible with
+    #      libraries to be linked
+    SET(CMAKE_BUILD_TYPE Release)
+ENDIF()
+
+IF(MSVC)
+    # we end up with no symbols being exported by Visual Studio unless we specify them or enable this flag
+    # see https://www.scivision.dev/cmake-shared-libs-visual-studio-windows/
+    SET(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS On)
+ENDIF()
+
 SET(FRAMEBUFFET_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/fbcollections.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/fbutil.c
@@ -86,6 +107,7 @@ IF(UNIX)
     ENDIF()
 ENDIF()
 
+SET(LINK_CJSON_STATIC "${LIB_BUILD}/libcjson.a")
 IF(LINUX)
     ADD_DEFINITIONS(-DTARGET_LINUX)
     
@@ -100,7 +122,15 @@ ELSEIF(WIN32)
     ADD_DEFINITIONS(-DTARGET_WINDOWS)
     
     ADD_LIBRARY(cjson SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_IMPLIB "${LIB_BUILD}/libcjson.dll")
+
+    IF(MSVC)
+        SET(LINK_CJSON_STATIC "${LIB_BUILD}/libcjson.lib")
+
+        SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_LOCATION "${LIB_BUILD}/cjson.dll")
+        SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_IMPLIB "${LIB_BUILD}/cjson${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    ELSE()
+        SET_TARGET_PROPERTIES(cjson PROPERTIES IMPORTED_IMPLIB "${LIB_BUILD}/libcjson.dll")
+    ENDIF()
 
     #ADD_LIBRARY(framebuffet MODULE ${FRAMEBUFFET_SOURCES})
 ENDIF()
@@ -108,15 +138,13 @@ ENDIF()
 # FIXME: framebuffet_static_lib does not export anything but cJSON symbols when compiled with MinGW
 
 ADD_LIBRARY(framebuffet SHARED ${FRAMEBUFFET_SOURCES})
+TARGET_INCLUDE_DIRECTORIES(framebuffet PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
+
 ADD_LIBRARY(framebuffet_static_lib SHARED ${FRAMEBUFFET_SOURCES})
+TARGET_INCLUDE_DIRECTORIES(framebuffet_static_lib PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
 
 ADD_LIBRARY(framebuffet_static STATIC ${FRAMEBUFFET_SOURCES})
-
-TARGET_INCLUDE_DIRECTORIES(framebuffet PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
-TARGET_INCLUDE_DIRECTORIES(framebuffet_static_lib PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
 TARGET_INCLUDE_DIRECTORIES(framebuffet_static PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
-
-SET(FRAMEBUFFET_LINK_OPTIONS -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/export_symbols.map)
 
 IF(WIN32)
     # by default all DLLs get prefixed with "lib" when built with CMake and MinGW
@@ -124,22 +152,30 @@ IF(WIN32)
     SET_TARGET_PROPERTIES(framebuffet PROPERTIES PREFIX "")
     SET_TARGET_PROPERTIES(framebuffet_static_lib PROPERTIES PREFIX "")
 
-    # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
-    TARGET_LINK_OPTIONS(framebuffet PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
-    TARGET_LINK_OPTIONS(framebuffet_static_lib PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+    # TODO: define something like export_symbols for MSVC as well?
+    IF(NOT MSVC)
+        SET(FRAMEBUFFET_LINK_OPTIONS -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/export_symbols.map)
+
+        # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
+        TARGET_LINK_OPTIONS(framebuffet PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+        TARGET_LINK_OPTIONS(framebuffet_static_lib PRIVATE -static-libgcc ${FRAMEBUFFET_LINK_OPTIONS})
+    ENDIF()
 
     ADD_LIBRARY(framebuffet_dll_shim STATIC ${FRAMEBUFFET_DLL_SHIM_SOURCES})
     TARGET_INCLUDE_DIRECTORIES(framebuffet_dll_shim PUBLIC ${LIB_BUILD} ${SUPPORT_THREADS})
 ENDIF()
 
 SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet")
+IF(MSVC)
+    SET_TARGET_PROPERTIES(framebuffet_static PROPERTIES OUTPUT_NAME "framebuffet_static")
+ENDIF()
 
-IF(NOT APPLE)
+IF(NOT APPLE AND NOT MSVC)
     # FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
     # NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?
     # https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
-    ADD_CUSTOM_TARGET(framebuffet_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:framebuffet_static> "${LIB_BUILD}/libcjson.a" "${LINK_C11_COMPAT_STATIC}")
+    ADD_CUSTOM_TARGET(framebuffet_static_complete ALL COMMAND ${CMAKE_AR} rc $<TARGET_FILE:framebuffet_static> "${LINK_CJSON_STATIC}" "${LINK_C11_COMPAT_STATIC}")
 ENDIF()
 
-TARGET_LINK_LIBRARIES(framebuffet cjson ${LINK_C11_COMPAT_STATIC} ${PTHREAD_LIB})
-TARGET_LINK_LIBRARIES(framebuffet_static_lib "${LIB_BUILD}/libcjson.a" ${LINK_C11_COMPAT_STATIC} ${PTHREAD_LIB})
+TARGET_LINK_LIBRARIES(framebuffet cjson "${LINK_C11_COMPAT_STATIC}" ${PTHREAD_LIB})
+TARGET_LINK_LIBRARIES(framebuffet_static_lib "${LINK_CJSON_STATIC}" "${LINK_C11_COMPAT_STATIC}" ${PTHREAD_LIB})

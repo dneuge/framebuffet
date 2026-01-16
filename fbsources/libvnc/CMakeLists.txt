@@ -19,6 +19,27 @@ IF(CMAKE_VERSION VERSION_LESS "3.25")
     ENDIF()
 ENDIF()
 
+MESSAGE(STATUS "Detected C compiler: ${CMAKE_C_COMPILER_ID}")
+MESSAGE(STATUS "Detected C++ compiler: ${CMAKE_CXX_COMPILER_ID}")
+
+IF(CMAKE_GENERATOR MATCHES "Visual Studio")
+    MESSAGE(STATUS "Detected Visual Studio")
+    SET(MSVC TRUE)
+
+    # VS should only ever be instructed to do release builds:
+    #   1. debug builds may link against versions of standard libraries which
+    #      cannot be obtained without Visual Studio and do not allow redistribution
+    #   2. debug builds define _ITERATOR_DEBUG_LEVEL to values incompatible with
+    #      libraries to be linked
+    SET(CMAKE_BUILD_TYPE Release)
+ENDIF()
+
+IF(MSVC)
+    # we end up with no symbols being exported by Visual Studio unless we specify them or enable this flag
+    # see https://www.scivision.dev/cmake-shared-libs-visual-studio-windows/
+    SET(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS On)
+ENDIF()
+
 IF(LINUX)
     ADD_DEFINITIONS(-DTARGET_LINUX)
 ELSEIF(APPLE)
@@ -76,6 +97,19 @@ ELSEIF(APPLE)
     # we must not link to the framework or the module will try to implicitly load it under a hard-coded path,
     # MacOS needs to be instructed to ignore unknown symbols if they are supposed to be provided by the runtime environment
     TARGET_LINK_OPTIONS(fbsource_libvnc_static_module PRIVATE -undefined dynamic_lookup)
+ELSEIF(MSVC)
+    ADD_LIBRARY(framebuffet SHARED IMPORTED)
+    #SET(LINK_FRAMEBUFFET_DYNAMIC framebuffet)
+    SET(LINK_FRAMEBUFFET_DYNAMIC "${FRAMEBUFFET_LIB}/framebuffet_dll_shim.lib")
+
+    # TODO: "static lib" may be the wrong artifact due to extra symbols and name extension; do we need multiple artifacts and rename them?
+    SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_LOCATION "${FRAMEBUFFET_LIB}/framebuffet_static_lib.dll")
+    SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_IMPLIB "${FRAMEBUFFET_LIB}/framebuffet_static_lib.lib")
+
+    SET(ZLIB_STATIC_NAME "zlibstat")
+
+    # VNC cannot be linked dynamically with Visual Studio as it only builds static binaries
+    ADD_LIBRARY(fbsource_libvnc_static_module MODULE ${FBPLUGIN_SOURCES})
 ELSEIF(WIN32)
     SET(ZLIB_NAME "libzlib")
     SET(ZLIB_STATIC_NAME "${ZLIB_NAME}static")
@@ -94,6 +128,8 @@ ENDIF()
 
 IF(APPLE)
     SET(LIBVNCCLIENT_STATIC "${LIB_BUILD}/libvncclient.a" "${LIB_BUILD}/libjpeg.a" "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/${ZLIB_STATIC_NAME}.a")
+ELSEIF(MSVC)
+    SET(LIBVNCCLIENT_STATIC "${LIB_BUILD}/vncclient.lib" "${LIB_BUILD}/turbojpeg-static.lib" "${LIB_BUILD}/jpeg-static.lib" "${LIB_BUILD}/lzo_object_lib.lib" "${LIB_BUILD}/${ZLIB_STATIC_NAME}.lib")
 ELSE()
     # MinGW is really pedantic about the order in which static dependencies are defined:
     # users have to come before dependencies, otherwise imported symbols are discarded despite already having been presented
@@ -104,7 +140,7 @@ ENDIF()
 ADD_LIBRARY(fbsource_libvnc_static STATIC ${FBPLUGIN_SOURCES})
 TARGET_COMPILE_DEFINITIONS(fbsource_libvnc_static PRIVATE FBSOURCE_BUILD_STATIC_MODULE)
 
-IF(NOT APPLE)
+IF(NOT APPLE AND NOT MSVC)
     # FIXME: this seems highly wrong and doesn't display all expected symbols when viewed with mc, what's wrong?
     # NOTE: CMAKE_C_ARCHIVE_CREATE does not work as it seems to not expand nested variables or something?
     # https://stackoverflow.com/questions/14199708/cmake-include-library-dependencies-in-a-static-library
@@ -113,7 +149,7 @@ IF(NOT APPLE)
     #ADD_CUSTOM_TARGET(fbsource_libvnc_static_complete ALL COMMAND ${CMAKE_C_ARCHIVE_CREATE} fbsource_libvnc_complete.${CMAKE_STATIC_LIBRARY_SUFFIX} $<TARGET_FILE:fbsource_libvnc_static> "${LIB_BUILD}/liblzo2.a" "${LIB_BUILD}/libz.a" "${LIB_BUILD}/libjpeg.a" "${LIB_BUILD}/libturbojpeg.a" "${LIB_BUILD}/libvncclient.a")
 ENDIF()
 
-IF(WIN32)
+IF(WIN32 AND NOT MSVC)
     # libgcc_s_seh will be missing on Windows if we don't compile with static-libgcc
     TARGET_LINK_OPTIONS(fbsource_libvnc_static_module PRIVATE -static-libgcc)
     TARGET_LINK_OPTIONS(fbsource_libvnc_static PRIVATE -static-libgcc)
@@ -121,9 +157,12 @@ IF(WIN32)
     # libvncclient uses Winsock2 which is provided by MinGW's ws2_32
     # (must be added last as explained above or symbols will not be found!)
     SET(LIBVNCCLIENT_STATIC ${LIBVNCCLIENT_STATIC} ws2_32)
+ELSEIF(MSVC)
+    # Visual Studio needs the same but under a slightly different name
+    SET(LIBVNCCLIENT_STATIC ${LIBVNCCLIENT_STATIC} WS2_32.lib)
 ENDIF()
 
-IF(NOT APPLE)
+IF(NOT APPLE AND NOT MSVC)
     TARGET_INCLUDE_DIRECTORIES(fbsource_libvnc PUBLIC ${FRAMEBUFFET_INCLUDE} ${LIB_BUILD} ${SUPPORT_THREADS})
     TARGET_LINK_LIBRARIES(fbsource_libvnc ${LINK_FRAMEBUFFET_DYNAMIC} libvncclient ${LINK_C11_COMPAT_STATIC})
 ENDIF()
@@ -135,7 +174,7 @@ TARGET_LINK_LIBRARIES(fbsource_libvnc_static_module ${LINK_FRAMEBUFFET_DYNAMIC} 
 TARGET_LINK_LIBRARIES(fbsource_libvnc_static ${LIBVNCCLIENT_STATIC} ${LINK_C11_COMPAT_STATIC})
 
 # compiled output file name
-IF(NOT APPLE)
+IF(NOT APPLE AND NOT MSVC)
     SET_TARGET_PROPERTIES(fbsource_libvnc PROPERTIES PREFIX "")
     SET_TARGET_PROPERTIES(fbsource_libvnc PROPERTIES OUTPUT_NAME "fbsource_libvnc")
 ENDIF()

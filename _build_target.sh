@@ -19,6 +19,14 @@ elif [[ "${HOST_OS_TYPE}" == "Darwin" ]]; then
 	HOST_OS_TYPE="MacOS"
 	HOST_OS_NAME="MacOS"
 	HOST_OS_VERSION="$(sw_vers -productVersion)"
+elif [[ "${HOST_OS_TYPE}" =~ ^MSYS_NT-.* ]]; then
+	HOST_OS_VERSION="${HOST_OS_TYPE/MSYS_/}"
+	HOST_OS_TYPE="Windows"
+	HOST_OS_NAME="Windows"
+elif [[ "${HOST_OS_TYPE}" =~ ^MINGW64_NT-.* ]]; then
+	HOST_OS_VERSION="${HOST_OS_TYPE/MINGW64_/}"
+	HOST_OS_TYPE="Windows"
+	HOST_OS_NAME="Windows"
 fi
 if [[ "${HOST_OS_NAME}" == "" ]]; then
 	HOST_OS_NAME="unknown host system"
@@ -28,6 +36,31 @@ export HOST_OS_TYPE
 export HOST_OS_ARCH
 export HOST_OS_NAME
 export HOST_OS_VERSION
+
+BUILD_SYSTEM="std"
+vs_product_id="unknown"
+vs_product_version="unknown"
+vs_root_dir="/c/vs_not_found"
+if [[ "$HOST_OS_TYPE" == "Windows" ]]; then
+	vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+	if [[ ! -e "$vswhere" ]]; then
+		echo "Visual Studio does not appear to be installed, assuming standard build system"
+	else
+		vs_product_id=$("$vswhere" -latest -property productId)
+		vs_product_version=$("$vswhere" -latest -property catalog_productLineVersion)
+
+		echo "Found Visual Studio: ${vs_product_id} ${vs_product_version}"
+		BUILD_SYSTEM="vs"
+
+		vs_root_dir="/c/Program Files (x86)/Microsoft Visual Studio/${vs_product_version}"
+		if [[ ! -d "${vs_root_dir}" ]]; then
+			vs_root_dir="/c/Program Files/Microsoft Visual Studio/${vs_product_version}"
+		fi
+		[[ -d "${vs_root_dir}" ]] || die "Visual Studio root directory could not be found"
+		echo "Visual Studio root: ${vs_root_dir}"
+	fi
+fi
+export BUILD_SYSTEM
 
 BUILD_TARGET="$(tr '[:upper:]' '[:lower:]' <<<$HOST_OS_TYPE)"
 if [[ "$#" -ge 1 ]]; then
@@ -55,7 +88,24 @@ else
 	default_cc="gcc"
 	default_cpp_compiler="g++"
 fi
-if [[ "${BUILD_TARGET}" == "windows" ]]; then
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+	default_cpp_compiler="${vs_root_dir}/BuildTools/VC/Tools/Llvm/x64/bin/clang-cl.exe"
+	if [[ ! -e "${default_cpp_compiler}" ]]; then
+		default_cpp_compiler="${vs_root_dir}/Enterprise/VC/Tools/Llvm/x64/bin/clang-cl.exe"
+	fi
+	[[ -e "${default_cpp_compiler}" ]] || die "Visual Studio Clang could not be found"
+	default_cc="${default_cpp_compiler}"
+
+	# For options see:
+	#   https://github.com/MicrosoftDocs/cpp-docs/blob/main/docs/build/reference/md-mt-ld-use-run-time-library.md
+	#
+	# /MD selects a runtime library suitable for creating DLLs which is necessary because by default MT_StaticRelease
+	# will be selected which may be incompatible when linking. This can be checked via
+	#   "c:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx86\x64\dumpbin.exe" /DIRECTIVES ...
+	# which must not list
+	#   /FAILIFMISMATCH:RuntimeLibrary=MT_StaticRelease
+	default_cpp_compiler_args="//MD"
+elif [[ "${BUILD_TARGET}" == "windows" ]]; then
 	default_cc="x86_64-w64-mingw32-gcc"
 	default_cpp_compiler="x86_64-w64-mingw32-g++"
 elif [[ "${BUILD_TARGET}" == "macos" ]]; then
@@ -68,11 +118,34 @@ export CC
 export CPP_COMPILER
 export CPP_COMPILER_ARGS
 
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+	if [[ ! "$(which msbuild.exe)" ]]; then
+		echo "MSBuild is not on path, trying known locations..."
+		vs_msbuild_dir="${vs_root_dir}/Enterprise/MSBuild/Current/Bin"
+		[[ -e "${vs_msbuild_dir}/MSBuild.exe" ]] || die "MSBuild.exe could not be located"
+		export PATH="${vs_msbuild_dir}:$PATH"
+		echo "MSBuild found in ${vs_msbuild_dir} (added to PATH)"
+	fi
+
+	if [[ ! "$(which nmake.exe)" ]]; then
+		# 14.29.30133 appears to be the raw version number of Visual Studio 2017
+		# https://stackoverflow.com/questions/79115154/what-is-the-latest-version-of-the-vc-redistributables-merge-modules-where-to-ge
+		echo "NMake is not on path, trying known locations..."
+		#ls -alR "${vs_root_dir}/Enterprise/"
+		vs_nmake_dir="${vs_root_dir}/Enterprise/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64"
+		[[ -e "${vs_nmake_dir}/nmake.exe" ]] || die "nmake.exe could not be located"
+		export PATH="${vs_nmake_dir}:$PATH"
+		echo "NMake found in ${vs_nmake_dir} (added to PATH)"
+	fi
+fi
+
 if [[ "${NUM_CPUS:-}" != "" ]]; then
 	echo "keeping NUM_CPUS which is already set to ${NUM_CPUS}"
 else
 	if [[ "${HOST_OS_TYPE}" == "MacOS" ]]; then
 		NUM_CPUS=$(sysctl -n hw.ncpu)
+	elif [[ "${HOST_OS_TYPE}" == "Windows" ]]; then
+		NUM_CPUS=$NUMBER_OF_PROCESSORS
 	else
 		NUM_CPUS=$(cat /proc/cpuinfo | grep -E 'processor\s*:' | nl | tail -n1 | sed -e 's/\s*\([0-9]\+\)\s.*/\1/')
 	fi

@@ -1,0 +1,17 @@
+ignore errors only blocking Visual Studio 17 with Clang
+
+--- a/cjson/CMakeLists.txt	2026-01-09 14:14:30.397620538 +0100
++++ b/cjson/CMakeLists.txt	2026-01-09 14:23:21.094890182 +0100
+@@ -71,6 +71,12 @@
+     list(APPEND custom_compiler_flags -Wno-error=float-conversion)
+ endif()
+ 
++# Frame Buffet: Compiling with Visual Studio 17 Clang raises warnings/errors which are not reported
++#               or ignored in other environments using (more recent?) Clang. Ignore on MSVC as well.
++if(WIN32)
++    list(APPEND custom_compiler_flags -Wno-error=reserved-macro-identifier -Wno-error=float-equal -Wno-error=cast-qual -Wno-error=unsafe-buffer-usage)
++endif()
++
+ option(ENABLE_SANITIZERS "Enables AddressSanitizer and UndefinedBehaviorSanitizer." OFF)
+ if (ENABLE_SANITIZERS)
+     list(APPEND custom_compiler_flags

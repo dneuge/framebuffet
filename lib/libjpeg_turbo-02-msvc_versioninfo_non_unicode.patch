@@ -1,0 +1,48 @@
+From 26af4ea82a649f068a43f7d71e9de04fa17b6af6 Mon Sep 17 00:00:00 2001
+From: Erin Melucci
+Date: Wed, 2 Nov 2022 09:33:55 +0100
+Subject: [PATCH] Win: Use wchar_t for copyright string in RC files
+
+llvm-rc doesn't like the copyright symbol in the LegalCopyright string.
+
+Possible solutions:
+1. Replace the copyright symbol with "(C)".
+2. Prefix the string literal with L, thus making it a wide character
+   string.
+3. Pass -c65001 to the resource compiler to enable the UTF-8 code page.
+
+Option 2 is the least disruptive, since it doesn't change the behavior
+of the official builds or require any build system modifications.
+
+Closes #627
+---
+ win/jpeg.rc.in      | 2 +-
+ win/turbojpeg.rc.in | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/win/jpeg.rc.in b/win/jpeg.rc.in
+index fca72b7fd..650fbe97a 100644
+--- a/libjpeg_turbo/win/jpeg.rc.in
++++ b/libjpeg_turbo/win/jpeg.rc.in
+@@ -24,7 +24,7 @@ BEGIN
+             VALUE "ProductVersion", "@VERSION@"
+             VALUE "ProductName", "@CMAKE_PROJECT_NAME@"
+             VALUE "InternalName", "jpeg@SO_MAJOR_VERSION@"
+-            VALUE "LegalCopyright", "Copyright \xA9 @COPYRIGHT_YEAR@ The libjpeg-turbo Project and many others"
++            VALUE "LegalCopyright", L"Copyright \xA9 @COPYRIGHT_YEAR@ The libjpeg-turbo Project and many others"
+             VALUE "OriginalFilename", "jpeg@SO_MAJOR_VERSION@.dll"
+         END
+     END
+diff --git a/win/turbojpeg.rc.in b/win/turbojpeg.rc.in
+index cc7ab3a77..c6cfc2dfe 100644
+--- a/libjpeg_turbo/win/turbojpeg.rc.in
++++ b/libjpeg_turbo/win/turbojpeg.rc.in
+@@ -24,7 +24,7 @@ BEGIN
+             VALUE "ProductVersion", "@VERSION@"
+             VALUE "ProductName", "@CMAKE_PROJECT_NAME@"
+             VALUE "InternalName", "turbojpeg"
+-            VALUE "LegalCopyright", "Copyright \xA9 @COPYRIGHT_YEAR@ The libjpeg-turbo Project and many others"
++            VALUE "LegalCopyright", L"Copyright \xA9 @COPYRIGHT_YEAR@ The libjpeg-turbo Project and many others"
+             VALUE "OriginalFilename", "turbojpeg.dll"
+         END
+     END

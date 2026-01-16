@@ -5,6 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// MSVC needs extra export declaration for source module descriptor or symbols will be missing
+#ifdef _MSC_VER
+#define FBLINK_EXPORT __declspec(dllexport)
+#else
+#define FBLINK_EXPORT
+#endif
+
 // hide compatibility layer unless building actual framework artifact (not needed by framework users)
 #ifdef BUILD_FRAMEBUFFET_FRAMEWORK
 #include "threads_compat.h"
@@ -332,8 +339,8 @@ typedef fbsource_module_t (*fbsource_init_f)(void);
 #define FBSOURCE_MODULE_DESCRIPTOR(descriptorid, modulename, modulelicense, moduleops) ; \
     static const char _fbsource_module_name__##descriptorid[]=modulename;     \
     static const char _fbsource_module_license__##descriptorid[]=modulelicense; \
-    const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
-    const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
+    FBLINK_EXPORT const char _fbsource_module_descriptor_symbol[]="_fbsource_module_descriptor__"#descriptorid; \
+    FBLINK_EXPORT const fbsource_module_descriptor_t _fbsource_module_descriptor__##descriptorid = { \
         .api_version = FRAMEBUFFET_MODULE_API_VERSION,                  \
         .name = (char*) _fbsource_module_name__##descriptorid,          \
         .license = (char*) _fbsource_module_license__##descriptorid,    \

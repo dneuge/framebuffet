@@ -38,6 +38,9 @@ fi
 # compile for Windows - other systems/environments should hopefully support C11 by now...
 if [[ "${BUILD_TARGET}" != "windows" ]]; then
     echo "==== Skipping Mesa (only C11 compatibility) ===="
+elif [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    echo "==== Skipping Mesa (only C11 compatibility) ===="
+    echo "Reason: Build is being performed with Visual Studio which actually supports C11."
 else
     echo "==== Building Mesa (only C11 compatibility) ===="
     cd_real_path "${script_dir}/lib/mesa/_c11_only"
@@ -82,30 +85,52 @@ cd_real_path "${script_dir}/lib/cjson"
 [[ -d build ]] && (rm -Rf build || die "cJSON clean failed")
 mkdir build || die "cJSON mkdir failed"
 cd build
+cjson_cmake_windows_export_all_symbols=Off
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    cjson_cmake_windows_export_all_symbols=On
+fi
 cmake \
     -D BUILD_SHARED_AND_STATIC_LIBS=On \
     -D ENABLE_CJSON_TEST=Off \
     -D ENABLE_PUBLIC_SYMBOLS=Off \
     -D ENABLE_HIDDEN_SYMBOLS=On \
     -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+    -D CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=${cjson_cmake_windows_export_all_symbols} \
     .. || die "cJSON CMake failed"
-make -j$num_jobs || die "cJSON make failed"
-cp -a libcjson*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (1)"
-cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (2)"
-cp -a ../cJSON.h "${script_dir}/lib/_build/" || die "cJSON copy failed (3)"
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    MSYS_NO_PATHCONV=1 msbuild.exe cjson.vcxproj /t:Build /p:Configuration=Release || die "Failed to make cJSON (msbuild dynamic)"
+    MSYS_NO_PATHCONV=1 msbuild.exe cjson-static.vcxproj /t:Build /p:Configuration=Release || die "Failed to make cJSON (msbuild static)"
+    cp -a Release/* "${script_dir}/lib/_build/" || die "cJSON copy failed (VS1)"
+    cp -a cjson-static.dir/Release/*.obj "${script_dir}/lib/_build/" || die "cJSON copy failed (VS2)"
+else
+    make -j$num_jobs || die "cJSON make failed"
+    cp -a libcjson*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "cJSON copy failed (STD1)"
+    cp -a libcjson*.a "${script_dir}/lib/_build/" || die "cJSON copy failed (STD2)"
+fi
+cp -a ../cJSON.h "${script_dir}/lib/_build/" || die "cJSON copy failed (C1)"
 echo
 
 echo "==== Building zlib ===="
 cd_real_path "${script_dir}/lib/zlib"
-[[ -d build ]] && (rm -Rf build || die "zlib clean failed")
-mkdir build || die "zlib mkdir failed"
-cd build
-cmake -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" .. || die "zlib CMake failed"
-make -j$num_jobs || die "zlib make failed"
-cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (1)"
-cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (2)"
-cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (3)"
-cp -a ../zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (4)"
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    # needed only for VNC which does not link dynamically when compiled with Visual Studio
+    #MSYS_NO_PATHCONV=1 msbuild.exe contrib/vstudio/vc17/zlibvc.vcxproj /t:Build /p:Configuration=Release || die "Failed to make zlib (msbuild dynamic)"
+    MSYS_NO_PATHCONV=1 msbuild.exe contrib/vstudio/vc17/zlibstat.vcxproj /t:Build /p:Configuration=Release || die "Failed to make zlib (msbuild static)"
+    #cp -a contrib/vstudio/vc17/x86/ZlibDllRelease/*.{lib,dll} "${script_dir}/lib/_build/" || die "zlib copy failed (VC1)"
+    cp -a contrib/vstudio/vc17/x86/ZlibStatRelease/*.lib "${script_dir}/lib/_build/" || die "zlib copy failed (VC2)"
+    cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (VC3)"
+else
+    [[ -d build ]] && (rm -Rf build || die "zlib clean failed")
+    mkdir build || die "zlib mkdir failed"
+    cd build
+    cmake -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" .. || die "zlib CMake failed"
+    make -j$num_jobs || die "zlib make failed"
+    cp -a libz*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "zlib copy failed (STD1)"
+    cp -a libz*.a "${script_dir}/lib/_build/" || die "zlib copy failed (STD2)"
+    cp -a zconf.h "${script_dir}/lib/_build/" || die "zlib copy failed (STD3)"
+    cd ..
+fi
+cp -a zlib.h "${script_dir}/lib/_build/" || die "zlib copy failed (C1)"
 echo
 
 echo "==== Building LZO ===="
@@ -114,11 +139,22 @@ cd_real_path "${script_dir}/lib/lzo"
 mkdir build || die "lzo mkdir failed"
 cd build
 cmake -D ENABLE_SHARED=ON -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" .. || die "lzo CMake failed"
-make -j$num_jobs || die "lzo make failed"
-cp -a liblzo2*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (1)"
-cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (2)"
+if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    # needed only for VNC which does not link dynamically when compiled with Visual Studio
+    #MSYS_NO_PATHCONV=1 msbuild.exe lzo_shared_lib.vcxproj /t:Build /p:Configuration=Release || die "Failed to make lzo (msbuild shared)"
+
+    # it appears that "object lib" is the static build, "static lib" only builds "object lib" and creates a "recipe"?
+    MSYS_NO_PATHCONV=1 msbuild.exe lzo_object_lib.vcxproj /t:Build /p:Configuration=Release || die "Failed to make lzo (msbuild object lib)"
+    #MSYS_NO_PATHCONV=1 msbuild.exe lzo_static_lib.vcxproj /t:Build /p:Configuration=Release || die "Failed to make lzo (msbuild static)"
+    #cp -a Release/* "${script_dir}/lib/_build/" || die "lzo copy failed (VS1)"
+    cp -a lzo_object_lib.dir/Release/lzo_object_lib.lib "${script_dir}/lib/_build/" || die "lzo copy failed (VS2)"
+else
+    make -j$num_jobs || die "lzo make failed"
+    cp -a liblzo2*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "lzo copy failed (STD1)"
+    cp -a liblzo2.a "${script_dir}/lib/_build/" || die "lzo copy failed (STD2)"
+fi
 mkdir -p "${script_dir}/lib/_build/lzo"
-cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (3)"
+cp -a ../include/lzo/* "${script_dir}/lib/_build/lzo/" || die "lzo copy failed (C1)"
 echo
 
 if [[ "${BUILD_TARGET}" == "macos" ]]; then
@@ -130,14 +166,24 @@ else
     [[ -d build ]] && (rm -Rf build || die "libjpeg-turbo clean failed")
     mkdir build || die "libjpeg-turbo mkdir failed"
     cd build
-    cmake -D ENABLE_SHARED=ON -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed"
-    make -j$num_jobs || die "libjpeg-turbo make failed"
-    cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (1)"
-    cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (2)"
-    cp -a libturbojpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (3)"
-    cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (4)"
-    cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (5)"
-    cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (6)"
+    if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+        # see lib/libjpeg_turbo/BUILDING.md for general instructions on how to build
+        # Clang toolchain interferes with upstream build process and has to be disabled temporarily
+        # needed only for VNC which does not link dynamically when compiled with Visual Studio
+        CMAKE_TOOLCHAIN_FILE="" cmake -G "NMake Makefiles" -D CMAKE_BUILD_TYPE=Release -D ENABLE_SHARED=OFF -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed (VC)"
+        nmake || die "libjpeg-turbo NMake failed (VC)"
+        #cp -a *.{dll,lib} "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (VC1)"
+        cp -a *.lib "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (VC1)"
+    else
+        cmake -D ENABLE_SHARED=ON -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE .. || die "libjpeg-turbo CMake failed (STD)"
+        make -j$num_jobs || die "libjpeg-turbo make failed (STD)"
+        cp -a libjpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (STD1)"
+        cp -a libjpeg*.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (STD2)"
+        cp -a libturbojpeg*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (STD3)"
+        cp -a libturbojpeg.a "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (STD4)"
+    fi
+    cp -a ../*.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (C1)"
+    cp -a *.h "${script_dir}/lib/_build/" || die "libjpeg-turbo copy failed (C2)"
 fi
 echo
 
@@ -183,7 +229,12 @@ function build_libvncclient {
         -D CMAKE_MODULE_PATH="${script_dir}/lib/CMakeModules" \
         -D CMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
         .. || die "VNC CMake failed"
-    make -j$num_jobs || die "VNC make failed"
+
+    if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+        MSYS_NO_PATHCONV=1 msbuild.exe vncclient.vcxproj /t:Build /p:Configuration=Release || die "Failed to make vncclient (msbuild)"
+    else
+        make -j$num_jobs || die "VNC make failed"
+    fi
     
     # to disable global find module database; see https://stackoverflow.com/questions/71613328/how-to-limit-find-package-search-to-cmake-module-path-by-default
     #   -DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=TRUE \
@@ -191,19 +242,31 @@ function build_libvncclient {
     
     if [[ "$1" == "ON" ]]; then
         # dynamically linked
-        cp -a libvncclient*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+        cp -a libvncclient*.${BUILD_TARGET_DYNLIB_EXT}* "${script_dir}/lib/_build/" || die "VNC copy failed (DYN STD1)"
     else
         # statically linked
-        cp -a libvncclient.a* "${script_dir}/lib/_build/" || die "VNC copy failed (1)"
+        if [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+            cp -a Release/vncclient.lib "${script_dir}/lib/_build/" || die "VNC copy failed (STAT VS1)"
+        else
+            cp -a libvncclient.a* "${script_dir}/lib/_build/" || die "VNC copy failed (STAT STD1)"
+        fi
         mkdir -p "${script_dir}/lib/_build/rfb"
-        cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (2)"
-        cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (3)"
+        cp -a ../rfb/*.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (C1)"
+        cp -a rfb/rfbconfig.h "${script_dir}/lib/_build/rfb/" || die "VNC copy failed (C2)"
     fi
 }
 
 
 if [[ "${BUILD_TARGET}" == "macos" ]]; then
     echo "==== Skipping libvncclient (dynamically linked; not available on Mac due to static-only libjpeg) ===="
+elif [[ "${BUILD_SYSTEM}" == "vs" ]]; then
+    echo "==== Skipping libvncclient (dynamically linked; not available when building with Visual Studio due to linker confusion and missing symbols) ===="
+    # This is weird but upstream only seems to run statically linked builds when using Visual Studio
+    # (see their CI configs, AppVeyor is easiest to understand), at least dependencies are not linked
+    # dynamically. Readme only describes cross-building from Linux, Visual Studio is not mentioned.
+    # Attempts to build a dynamically linked library anyway results in linker errors
+    # (Zlib symbols not being found and libjpeg-turbo symbols being duplicated by a "wrapper" in
+    # src/common).
 else
     echo "==== Building libvncclient (dynamically linked) ===="
     build_libvncclient ON ON
