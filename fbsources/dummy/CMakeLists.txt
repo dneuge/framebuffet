@@ -64,9 +64,13 @@ ELSEIF(WIN32)
 ENDIF()
 
 IF(APPLE)
-    ADD_LIBRARY(framebuffet SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_LOCATION "${FRAMEBUFFET_LIB}/libframebuffet.dylib")
-    SET(LINK_FRAMEBUFFET_DYNAMIC framebuffet)
+    # we must not link to the framework or the module will try to implicitly load it under a hard-coded path,
+    # MacOS needs to be instructed to ignore unknown symbols if they are supposed to be provided by the runtime environment
+    TARGET_LINK_OPTIONS(fbsource_dummy PRIVATE -undefined dynamic_lookup)
+
+    #ADD_LIBRARY(framebuffet SHARED IMPORTED)
+    #SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_LOCATION "${FRAMEBUFFET_LIB}/libframebuffet.dylib")
+    #SET(LINK_FRAMEBUFFET_DYNAMIC framebuffet)
 ENDIF()
 
 ADD_LIBRARY(fbsource_dummy_static STATIC ${FBPLUGIN_SOURCES})

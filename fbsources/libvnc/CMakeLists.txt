@@ -64,14 +64,18 @@ IF(LINUX)
     ADD_LIBRARY(fbsource_libvnc SHARED ${FBPLUGIN_SOURCES})
     ADD_LIBRARY(fbsource_libvnc_static_module SHARED ${FBPLUGIN_SOURCES})
 ELSEIF(APPLE)
-    ADD_LIBRARY(framebuffet SHARED IMPORTED)
-    SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_LOCATION "${FRAMEBUFFET_LIB}/libframebuffet.dylib")
-    SET(LINK_FRAMEBUFFET_DYNAMIC framebuffet)
-    
+    #ADD_LIBRARY(framebuffet SHARED IMPORTED)
+    #SET_TARGET_PROPERTIES(framebuffet PROPERTIES IMPORTED_LOCATION "${FRAMEBUFFET_LIB}/libframebuffet.dylib")
+    #SET(LINK_FRAMEBUFFET_DYNAMIC framebuffet)
+
     SET_TARGET_PROPERTIES(libvncclient PROPERTIES IMPORTED_LOCATION "${LIB_BUILD}/libvncclient.dylib")
-    
+
     #ADD_LIBRARY(fbsource_libvnc SHARED ${FBPLUGIN_SOURCES})
     ADD_LIBRARY(fbsource_libvnc_static_module SHARED ${FBPLUGIN_SOURCES})
+
+    # we must not link to the framework or the module will try to implicitly load it under a hard-coded path,
+    # MacOS needs to be instructed to ignore unknown symbols if they are supposed to be provided by the runtime environment
+    TARGET_LINK_OPTIONS(fbsource_libvnc_static_module PRIVATE -undefined dynamic_lookup)
 ELSEIF(WIN32)
     SET(ZLIB_NAME "libzlib")
     SET(ZLIB_STATIC_NAME "${ZLIB_NAME}static")
