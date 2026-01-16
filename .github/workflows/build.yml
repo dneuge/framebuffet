@@ -63,6 +63,9 @@ jobs:
           name: release
           path: |
             lib/_build/*.dylib
+            lib/_build/*.dll
+            lib/_build/*.lib
+            lib/_build/*.obj
             framework/release
             fbsources/*/release
           retention-days: 1
