@@ -3,6 +3,17 @@ SET(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "" FORCE)
 SET(CMAKE_CXX_STANDARD 11)
 PROJECT(framebuffet)
 
+# Output artifacts are:
+#
+#   framebuffet                  fully dynamically linked framework (dependencies need to be provided as shared objects at runtime)
+#   framebuffet_static_lib       dynamically linked framework with statically linked dependencies (dependencies become part of the framework artifact)
+#   framebuffet_static           just the framework to be statically linked later (linking dependencies is left to downstream projects)
+#   framebuffet_static_complete  (EXPERIMENTAL) the framework and its dependencies all statically linked together into a single artifact
+#
+# The following dependencies are handled differently:
+# - C11 threads wrappers are statically included even on the "fully dynamic" build
+# - OS libraries are always dynamically linked
+
 INCLUDE(CheckIncludeFile)
 INCLUDE(CheckCSourceCompiles)
 
