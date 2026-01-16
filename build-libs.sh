@@ -220,7 +220,7 @@ fi
 echo
 
 if [[ "${BUILD_TARGET}" != "linux" ]]; then
-    echo "==== Skipping xcb/xcb-proto (Linux only) ===="
+    echo "==== Skipping dependencies related to X11 (Linux only) ===="
 else
     echo "==== Building xcb/xcb-proto (Linux) ===="
     python_version=$(python3 <<<'import sys;print("%d.%d" % (sys.version_info.major, sys.version_info.minor))' || die "unable to determine Python 3 version")
