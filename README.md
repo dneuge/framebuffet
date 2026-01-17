@@ -34,6 +34,12 @@ The following modules are included with the current version of Frame Buffet:
 
 Additional screen capture modules for Windows and the macOS® operating system are expected to be added H1/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
 
+### Framework bindings
+
+The following projects provide bindings for the framework:
+
+* Java: [JNA Java bindings for Frame Buffet](https://codeberg.org/dneuge/framebuffet-jna) (available on [Codeberg](https://codeberg.org/dneuge/framebuffet-jna) and [GitHub](https://github.com/dneuge/framebuffet-jna))
+
 ## History
 
 For another project I needed a way to merge a frame buffer image from several sources which again needed to be split up and potentially transformed somehow. This all should happen multi-threaded (one of the sources being a network stream via VNC) with as low latency as possible. The end consumer (a rendering phase callback) should not have to wait for the image to be composed but just grab whatever the compositing had previously completed to keep the callback runtime as short as possible (and thus not negatively influence the application's framerate). The sources I was about to grab from had to be configurable and there had to be user-configurable variables to do system-specific image manipulation (splitting). I also wasn't sure about the exact details of the source images either. In the end I figured that if I already have a framework allowing me to configure such modular scene graphs, then I might even want to add some image generation as frame buffer sources instead of post-processing the composited frames with an overlay afterwards. Oh, and everything had to be statically linkable. Since an Internet search didn't turn up any such library I decided to implement it separate from the original project I needed it for as it might be useful for other projects.
