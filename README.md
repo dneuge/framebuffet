@@ -1,6 +1,7 @@
 # Frame Buffet - all you can treat!
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![Issue Tracking: Codeberg](https://img.shields.io/badge/issue%20tracking-codeberg-2684cf)](https://codeberg.org/dneuge/framebuffet/issues)
 
 <img src="docs/logo/frontpage.svg" alt="frontpage logo" width="100%" style="max-width:800px;display:block;margin-left:auto;margin-right:auto;" />
 
@@ -12,6 +13,8 @@ Frame Buffet is a library implementing an externally configurable modular 2D sce
 * use as little runtime dependencies as possible (unless required by a specific source module)
 * suitable both for dynamic and static linking
 * the library should be as platform-independent as possible, supporting all major operating systems
+
+Official repositories are hosted on [Codeberg](https://codeberg.org/dneuge/framebuffet) and [GitHub](https://github.com/dneuge/framebuffet). Both locations are kept in sync and can be used to submit pull requests but issues are only tracked on [Codeberg](https://codeberg.org/dneuge/framebuffet/issues) to gather them in a single place. Please note that this project has a strict "no AI" policy [affecting all contributions](CONTRIBUTING.md) incl. issue reports.
 
 ## Current state
 
