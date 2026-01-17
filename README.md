@@ -2,15 +2,36 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Frame Buffet is a basic framework implementing an externally configurable modular 2D scene graph for frame buffer compositing. That was a lot of buzz words in one sentence, so what is it meant to do?
+Frame Buffet is a library implementing an externally configurable modular 2D scene graph for frame buffer composition. The project's goals are:
 
-For another project I needed a way to merge a frame buffer image from several sources which again needed to be split up and potentially transformed somehow. This all should happen multi-threaded (one of the sources being a network stream via VNC) with as low latency as possible. The end consumer (a rendering phase callback) should not have to wait for the image to be composed but just grab whatever the compositing had previously completed to keep the callback runtime as short as possible (and thus not negatively influence the application's framerate). The sources I was about to grab from had to be configurable and there had to be user-configurable variables to do system-specific image manipulation (splitting). I also wasn't sure about the exact details of the source images either. In the end I figured that if I already have a framework allowing me to configure such modular scene graphs, then I might even want to add some image generation as frame buffer sources instead of post-processing the composited frames with an overlay afterwards. Oh, and everything had to be statically linkable. Since an Internet search didn't turn up any such library I decided to implement it separate from the original project I needed it for as it might be useful for other projects.
-
-The framework uses interfaces in C to be as universally reusable as possible.
+* a light-weight and easy-to-use framework, written in C to be as universally reusable as possible
+* image sources/generation as well as processing should be fully modular for easy customization/extension
+  * all modules should be optional
+* use as little runtime dependencies as possible (unless required by a specific source module)
+* suitable both for dynamic and static linking
+* the library should be as platform-independent as possible, supporting all major operating systems
 
 ## Current state
 
 The framework is in early development. The API is *not stable* yet and may change at any time without notice.
+
+### Included modules
+
+The following modules are included with the current version of Frame Buffet:
+
+* platform-independent:
+  * [`crop`](fbsources/crop) extracts a rectangular part from another source
+  * [`dummy`](fbsources/dummy) generates a simple animated color pattern for debugging, also useful as a reference when writing custom modules
+  * [`libvnc`](fbsources/libvnc) uses [LibVNC](https://github.com/LibVNC/libvncserver) to connect to a VNC server (note that LibVNC is [licensed GPL 2](https://github.com/LibVNC/libvncserver/blob/master/COPYING))
+  * [`merge`](fbsources/merge) combines rectangular parts from other sources
+* platform-dependent:
+  * [`capture_x11`](fbsources/capture_x11) implements screen capture on Linux for X11
+
+Additional screen capture modules for Windows and the macOS® operating system are expected to be added H1/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
+
+## History
+
+For another project I needed a way to merge a frame buffer image from several sources which again needed to be split up and potentially transformed somehow. This all should happen multi-threaded (one of the sources being a network stream via VNC) with as low latency as possible. The end consumer (a rendering phase callback) should not have to wait for the image to be composed but just grab whatever the compositing had previously completed to keep the callback runtime as short as possible (and thus not negatively influence the application's framerate). The sources I was about to grab from had to be configurable and there had to be user-configurable variables to do system-specific image manipulation (splitting). I also wasn't sure about the exact details of the source images either. In the end I figured that if I already have a framework allowing me to configure such modular scene graphs, then I might even want to add some image generation as frame buffer sources instead of post-processing the composited frames with an overlay afterwards. Oh, and everything had to be statically linkable. Since an Internet search didn't turn up any such library I decided to implement it separate from the original project I needed it for as it might be useful for other projects.
 
 ## How to build
 
