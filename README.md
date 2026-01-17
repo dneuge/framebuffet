@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
+<img src="docs/logo/frontpage.svg" alt="frontpage logo" width="100%" style="max-width:800px;display:block;margin-left:auto;margin-right:auto;" />
+
 Frame Buffet is a library implementing an externally configurable modular 2D scene graph for frame buffer composition. The project's goals are:
 
 * a light-weight and easy-to-use framework, written in C to be as universally reusable as possible
