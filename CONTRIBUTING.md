@@ -63,6 +63,10 @@ This project does not currently have any written consent by Microsoft to lift th
 
 As the website has become a commonly encountered source of information when dealing with Windows-specific implementation it is hard to completely avoid it. If you cannot find any other source, you must not make a contribution based off that information.
 
+#### Additional complication: Microsoft promoting use of AI/LLMs
+
+Microsoft is well-known for being very persistent on promoting use of LLMs ("Copilot") throughout all their products and services. Because this project has strict rules about preventing "AI-generated" and thus legally and qualitatively doubtful contributions, **all Microsoft documentation edited after 2022 must be treated as potentially tainted by "AI"**.
+
 ### How to mitigate
 
 Content published to learn.microsoft.com is based on files published on GitHub which are (for the most part at least) released under open licenses which don't suffer from the restrictions put in place by the website, see: https://github.com/orgs/MicrosoftDocs/repositories?type=all
@@ -75,6 +79,15 @@ If a contribution cannot be made without involving documentation from Microsoft:
   - watch out for any changes in licensing that might appear midway in sub-directories or single files
 - if the license is still compatible at the end, you are free to base your contribution on it and discuss about the contents
   - please mention the source of information and applicable license conditions in your contribution/commit as it will need to be verified to accept the contribution
+
+Additionally, check the commit history on the Git repository. Edits up to 2022 have *probably* still been made without AI but all later edits should be considered tainted until checked:
+
+- check commit volume & frequency (e.g. periods of mass-edits, unreasonably large commits)
+- check commit header for signs of AI (commit message, authors, committer)
+- check changes for typical signs of AI (e.g. formatting, comments, inconsistencies, unusual writing style, ...)
+- exercise common sense, do a quick fact-check (plausibility and cross-references through traditional web searches and other sources) before wasting time on wrong documentation (there have been incidents where wrong/non-sensical AI slop was found published to learn.microsoft.com)
+- resort to older revisions if in doubt
+- when documenting sources also include rationale about why the external source is likely untainted by AI/LLMs (at least not to any relevant degree)
 
 ### How to deal with information about Microsoft products/APIs found on non-Microsoft sources
 
