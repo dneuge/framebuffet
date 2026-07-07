@@ -2,6 +2,7 @@
 
 Before contributing code for inclusion to the main repository, please make sure that
 
+- you have read and accept the [AI Usage Policy](AI_USAGE_POLICY.md), which also applies to you if you don't consciously use or plan to use AI
 - you have read all available documentation of this project, in particular the [development notes](DEVELOPMENT.md)
 - the source code you are about to commit can be released under MIT license (effective runtime license after linking can differ)
   - check with project lead before introducing code restricted by licenses
@@ -15,9 +16,7 @@ Before contributing code for inclusion to the main repository, please make sure 
     - when this results in a conflict to other points in these guidelines, the affected contribution needs to be considered as potentially derivative work and treated accordingly (note that e.g. including code from an external project does not necessarily violate the "own work" rule, but special care must be taken in terms of copyright and license conformity)
     - for any significant "imported" portion of code the **origin must be documented**; attempting to contribute copied code without proper attribution and clear indication of sources and licenses is a severe copyright violation
     - documentation published by Microsoft on learn.microsoft.com is highly problematic; see the section below on how to work with it
-  - **AI must not have been involved in any part of authoring your contribution** because the original sources involved in AI training and thus their authors and license conditions are untraceable, bearing a high risk of copyright/license violation
-    - you may be **explicitly asked to truthfully pledge not to have or will be using generative AI in any of your contributions**, neither for source code nor any other contribution including issue reports or discussions; violation of this strict requirement may lead to permanent removal from the project due to a breach of trust and tainting it with legal issues
-    - it is highly recommend to disable all AI-related functions in editors you use (e.g. IDEs) while making or preparing contributions to this project to avoid any accidental violations of this rule
+  - **AI must not have been involved for authoring any part of your contribution except for allowed cases as detailed in the [AI Usage Policy](AI_USAGE_POLICY.md)**
 - all commits are made under your full real name (no aliases, no short names) and with a working email address (it must be possible to contact you under that address for the foreseeable future)
 - you understand and agree to be listed with that information permanently, unrevokable, as a contributor to the project in the source repository and, at least for larger contributions, accompanying documentation
 - you understand that such information will be copied and archived permanently in uncontrollable ways due to the nature of services used to collaborate on the project, as well as source code repositories and open communication on the Internet in general
@@ -65,7 +64,7 @@ As the website has become a commonly encountered source of information when deal
 
 #### Additional complication: Microsoft promoting use of AI/LLMs
 
-Microsoft is well-known for being very persistent on promoting use of LLMs ("Copilot") throughout all their products and services. Because this project has strict rules about preventing "AI-generated" and thus legally and qualitatively doubtful contributions, **all Microsoft documentation edited after 2022 must be treated as potentially tainted by "AI"**.
+Microsoft is well-known for being very persistent on promoting use of LLMs ("Copilot") throughout all their products and services, including AI slop found on official documentation. Therefore, **all Microsoft documentation edited after 2022 must be treated as potentially tainted by "AI"** and handled with special care (and an abundance of scepticism) as also detailed in this project's [AI Usage Policy](AI_USAGE_POLICY.md).
 
 ### How to mitigate
 

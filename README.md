@@ -14,7 +14,7 @@ Frame Buffet is a library implementing an externally configurable modular 2D sce
 * suitable both for dynamic and static linking
 * the library should be as platform-independent as possible, supporting all major operating systems
 
-Official repositories are hosted on [Codeberg](https://codeberg.org/dneuge/framebuffet) and [GitHub](https://github.com/dneuge/framebuffet). Both locations are kept in sync and can be used to submit pull requests but issues are only tracked on [Codeberg](https://codeberg.org/dneuge/framebuffet/issues) to gather them in a single place. Please note that this project has a strict "no AI" policy [affecting all contributions](CONTRIBUTING.md) incl. issue reports.
+Official repositories are hosted on [Codeberg](https://codeberg.org/dneuge/framebuffet) and [GitHub](https://github.com/dneuge/framebuffet). Both locations are kept in sync and can be used to submit pull requests but issues are only tracked on [Codeberg](https://codeberg.org/dneuge/framebuffet/issues) to gather them in a single place. Please note that [all contributions](CONTRIBUTING.md) incl. issue reports are subject to a restrictive [AI Usage Policy](AI_USAGE_POLICY.md).
 
 ## Current state
 
@@ -117,6 +117,10 @@ Frame buffer source modules are separate dynamically linkable libraries (.so/.dl
 
 You may find [`tools/fbsourceviewer`](tools/fbsourceviewer) useful for manual testing.
 
+## Security
+
+Please refer to the [security policy](SECURITY.md) for details on how to report security issues and an overview of security considerations.
+
 ## License
 
 The source code and accompanying files are released under [MIT license](LICENSE.md) unless stated otherwise. The framework does not depend on any dependencies that would restrict the license.
@@ -137,11 +141,10 @@ Unless you can comply with the licenses of this project you obviously are not pe
 set. Although it may not be required by those licenses, you are additionally asked to make your AI model publicly
 available under an open license and for free, to play fair and contribute back to the open community you take from.
 
-AI tools are not permitted to be used for contributions to this project. The main reason is that, as of time of writing,
-no tool/model offers traceability nor can today's AI models understand and reason about what they are actually doing.
-Apart from potential copyright/license violations the quality of AI output is doubtful and generally requires more
-effort to be reviewed and cleaned/fixed than actually contributing original work. Contributors will be asked to confirm
-and permanently record compliance with these guidelines.
+For contributions to this project, **AI tools and services may only be used as detailed in the
+[Contribution Guidelines](CONTRIBUTING.md) and separate [AI Usage Policy](AI_USAGE_POLICY.md)**. Contributors will be
+asked to confirm and permanently record compliance with that policy. Violations may lead to immediate and permanent
+removal from this project, depending on severity.
 
 ## Acknowledgements
 
