@@ -108,6 +108,7 @@ static char* copy_string_format_safe(char *s) {
     return out;
 }
 
+__attribute__((__format__ (__printf__, 3, 0)))
 static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, char *format, va_list args) {
     // we need to have a log receiver and the log level has to be runtime-enabled to continue
     if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {

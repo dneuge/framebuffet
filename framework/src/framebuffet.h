@@ -432,7 +432,9 @@ extern "C" {
 fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
 fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
+__attribute__((__format__ (__printf__, 3, 4)))
 void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
+__attribute__((__format__ (__printf__, 3, 0)))
 void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
 
 char* framebuffet_get_source_name_reference(void *instance_ref); // does not return a copy!
