@@ -23,6 +23,16 @@ if [[ "${BUILD_TARGET}" != "windows" ]]; then
     exit 0
 fi
 
+if [[ "${BUILD_SYSTEM}" != "vs" ]]; then
+    if [[ "${FBSOURCE_CAPTURE_WINRT_DXGI:-}" == "foreign-build" ]]; then
+        echo "!!! Building module despite environment mismatch; BUILD_SYSTEM is ${BUILD_SYSTEM} !!!"
+    else
+        echo "Capturing from WinRT/DXGI requires a Visual Studio build environment; skipping build"
+        echo "(you can set environment variable FBSOURCE_CAPTURE_WINRT_DXGI=\"foreign-build\" to bypass this check)"
+        exit 0
+    fi
+fi
+
 num_jobs=$(( $NUM_CPUS + 1 ))
 
 [[ -d "${build_dir}" ]] && rm -Rf "${build_dir}"
