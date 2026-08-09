@@ -15,6 +15,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(root)
 add_subdirectory(framework EXCLUDE_FROM_ALL)
+add_subdirectory(fbsources/capture_winrt_dxgi EXCLUDE_FROM_ALL)
 add_subdirectory(fbsources/capture_x11 EXCLUDE_FROM_ALL)
 add_subdirectory(fbsources/crop EXCLUDE_FROM_ALL)
 add_subdirectory(fbsources/dummy EXCLUDE_FROM_ALL)

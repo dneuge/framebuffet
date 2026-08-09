@@ -36,6 +36,11 @@ cd "${script_dir}/fbsources/merge"
 ./build.sh $@ || die "Building merge source failed"
 echo
 
+echo "=== Building capture WinRT/DXGI source ==="
+cd "${script_dir}/fbsources/capture_winrt_dxgi"
+./build.sh $@ || die "Building capture WinRT/DXGI source failed"
+echo
+
 echo "=== Building capture X11 source ==="
 cd "${script_dir}/fbsources/capture_x11"
 ./build.sh $@ || die "Building capture X11 source failed"

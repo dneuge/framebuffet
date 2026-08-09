@@ -129,6 +129,16 @@ The source code and accompanying files are released under [MIT license](LICENSE.
 
 Please check modules for all applicable licenses before use or redistribution.
 
+### Major inclusions
+
+Due to a lack of knowledge (and documentation) about Windows programming, capturing on Windows (`capture_winrt_dxgi`)
+would not have been possible to implement without *closely* following/translating the following projects by
+Robert Mikhayelyan, with the Windows-binding parts of the Frame Buffet source module effectively being derivatives
+of those projects:
+
+- https://github.com/robmikh/Win32CaptureSample, licensed MIT, Copyright (c) 2019 Robert Mikhayelyan
+- https://github.com/robmikh/robmikh.common, licensed MIT, Copyright (c) 2019 Robert Mikhayelyan
+
 ### Note on the use of/for AI
 
 Usage for AI training is subject to individual source licenses, there is no exception. This generally means that proper
