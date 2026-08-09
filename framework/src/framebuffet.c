@@ -134,7 +134,14 @@ static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t 
 
 void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args) {
     fbsource_module_instance_entry_t *module_instance_entry = instance_ref;
+    if (!module_instance_entry) {
+        return;
+    }
+
     framebuffet_t *framebuffet = module_instance_entry->framebuffet;
+    if (!framebuffet) {
+        return;
+    }
 
     // avoid unnecessary overhead if the message won't be logged anyway
     if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
