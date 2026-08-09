@@ -42,7 +42,7 @@ ENDIF()
 IF(WIN32)
     ADD_DEFINITIONS(-DTARGET_WINDOWS)
 ELSE()
-    MESSAGE(FATAL_ERROR "WinRT/DXGI capture source is only relevant for Windows and will not compile for any other target.")
+    MESSAGE(WARNING "WinRT/DXGI capture source is only relevant for Windows and will not compile for any other target.")
 ENDIF()
 
 MESSAGE(STATUS "System version: ${CMAKE_SYSTEM_VERSION}")
