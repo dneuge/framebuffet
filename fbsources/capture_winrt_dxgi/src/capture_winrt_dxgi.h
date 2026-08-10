@@ -29,6 +29,10 @@ typedef struct {
 
     char *window_search_name_exact;
     winrt_dxgi_capture_flags_t capture_flags;
+    int crop_left;
+    int crop_right;
+    int crop_top;
+    int crop_bottom;
 
     unsigned int width;
     unsigned int height;
@@ -40,6 +44,10 @@ typedef struct {
     // only handled by capture session (accessed without mutex)
     unsigned char *internal_buffer;
     size_t internal_buffer_size;
+    window_dimensions_t expected_window_dimensions;
+    HWND window_handle;
+    unsigned int offset_x;
+    unsigned int offset_y;
 } fbsource_capture_winrt_dxgi_t;
 
 

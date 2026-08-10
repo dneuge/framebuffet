@@ -66,6 +66,13 @@ static bool find_window(fbsource_capture_winrt_dxgi_t *instance, HWND *handle, w
             continue;
         }
 
+        int cropped_width = found_dimensions.width - instance->crop_left - instance->crop_right;
+        int cropped_height = found_dimensions.height - instance->crop_top - instance->crop_bottom;
+        if (cropped_width <= 0 || cropped_height <= 0) {
+            FBLOG_WARN(instance->ext_instance_ref, "find_window: cropped window dimensions are invalid cropped_width=%d, cropped_height=%d (window is too small)", cropped_width, cropped_height);
+            continue;
+        }
+
         *handle = window->handle;
         *dimensions = found_dimensions;
 
@@ -227,11 +234,35 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
         FBLOG_WARN(instance->ext_instance_ref, "failed to copy frame from DirectX capture session to internal buffer");
         return;
     }
-    if (frame_info.width != instance->width || frame_info.height != instance->height) {
+
+    window_dimensions_t window_dimensions = {0,};
+    if (!get_window_dimensions(instance->window_handle, &window_dimensions)) {
         // FIXME: trigger reinitialization
-        FBLOG_INFO(instance->ext_instance_ref, "window size changed, width %u => %u, height %u => %u", instance->width, frame_info.width, instance->height, frame_info.height);
+        FBLOG_WARN(instance->ext_instance_ref, "failed to retrieve window size");
         return;
     }
+
+    if ((instance->expected_window_dimensions.width != window_dimensions.width) || (instance->expected_window_dimensions.height != window_dimensions.height)) {
+        // FIXME: trigger reinitialization
+        FBLOG_INFO(
+            instance->ext_instance_ref, "window size changed, width %u => %u, height %u => %u",
+            instance->expected_window_dimensions.width, window_dimensions.width,
+            instance->expected_window_dimensions.height, window_dimensions.height
+        );
+        return;
+    }
+
+    int minimum_frame_width = (instance->offset_x + instance->width);
+    int minimum_frame_height = (instance->offset_y + instance->height);
+    if (frame_info.width < minimum_frame_height || frame_info.height < minimum_frame_height) {
+        // FIXME: trigger reinitialization
+        FBLOG_WARN(
+            instance->ext_instance_ref, "insufficient size of received frame: frame_info.width=%d, frame_info.height=%d, minimum_frame_width=%d, minimum_frame_height=%d",
+            frame_info.width, frame_info.height, minimum_frame_width, minimum_frame_height
+        );
+        return;
+    }
+
     if (frame_info.color_bitdepth != 8) {
         // FIXME: trigger abort
         FBLOG_WARN(instance->ext_instance_ref, "unsupported color bit depth, need 8 bit, got %u", frame_info.color_bitdepth);
@@ -244,36 +275,28 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
     }
     clock_t benchGotImage = clock(); // DEBUG
 
-    int work_buffer = (instance->complete_buffer + 1) % 2;
-    uint32_t *in = (uint32_t*) instance->internal_buffer;
-    unsigned char *out = instance->buffers[work_buffer];
-
-    int row_overscan_bytes = frame_info.num_bytes_per_row - (frame_info.bytes_per_pixel * frame_info.width);
-    if (row_overscan_bytes < 0) {
-        // FIXME: trigger reinitialization
-        FBLOG_WARN(instance->ext_instance_ref, "invalid overscan calculated: num_bytes_per_row=%u, bytes_per_pixel=%u, width=%u => row_overscan_bytes=%d", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel, frame_info.width, row_overscan_bytes);
-        return;
-    } else if (row_overscan_bytes % frame_info.bytes_per_pixel != 0) {
-        // FIXME: trigger reinitialization
-        FBLOG_WARN(instance->ext_instance_ref, "calculated overscan is not aligned to number of bytes per pixel: num_bytes_per_row=%u, bytes_per_pixel=%u, width=%u => row_overscan_bytes=%d", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel, frame_info.width, row_overscan_bytes);
-        return;
-    }
     if (frame_info.num_bytes_per_row % frame_info.bytes_per_pixel != 0) {
         // FIXME: trigger reinitialization
         FBLOG_WARN(instance->ext_instance_ref, "number of bytes per row is not aligned with bytes per pixel: num_bytes_per_row=%u, bytes_per_pixel=%u", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel);
         return;
     }
-    unsigned int pixels_per_row = frame_info.num_bytes_per_row / frame_info.bytes_per_pixel;
-    const unsigned int overscan_pixels = row_overscan_bytes / frame_info.bytes_per_pixel;
+    uint32_t frame_pixels_per_row = frame_info.num_bytes_per_row / frame_info.bytes_per_pixel;
 
-    const uint32_t *in_end = in + (frame_info.height * pixels_per_row);
+    int work_buffer = (instance->complete_buffer + 1) % 2;
+    uint32_t *in = (uint32_t*) instance->internal_buffer;
+    in += instance->offset_x + (instance->offset_y * frame_pixels_per_row);
+    unsigned char *out = instance->buffers[work_buffer];
+
+    const uint32_t in_skip_pixels = (frame_pixels_per_row - instance->width);
+    const uint32_t wanted_width = instance->width;
+    const uint32_t *in_end = in + (instance->height * frame_pixels_per_row);
     const uint32_t red_mask = frame_info.red_mask;
     const uint32_t green_mask = frame_info.green_mask;
     const uint32_t blue_mask = frame_info.blue_mask;
     const uint8_t red_shift = frame_info.red_shift;
     const uint8_t green_shift = frame_info.green_shift;
     const uint8_t blue_shift = frame_info.blue_shift;
-    uint32_t *in_end_of_row = in + frame_info.width;
+    uint32_t *in_end_of_wanted_row = in + wanted_width;
     while (in < in_end) {
         const uint32_t in_val = *in;
         *(out++) = (in_val & red_mask) >> red_shift;
@@ -281,9 +304,9 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
         *(out++) = (in_val & blue_mask) >> blue_shift;
         in++;
 
-        if (in >= in_end_of_row) { // TODO: annotate "unlikely"?
-            in += overscan_pixels;
-            in_end_of_row = in + frame_info.width;
+        if (in >= in_end_of_wanted_row) { // TODO: annotate "unlikely"?
+            in += in_skip_pixels;
+            in_end_of_wanted_row = in + wanted_width;
         }
     }
     clock_t benchConverted = clock(); // DEBUG
@@ -348,11 +371,27 @@ static int generate(void *data) {
             break;
         }
 
+        instance->offset_x = instance->crop_left;
+        instance->offset_y = instance->crop_top;
+
+        int width = window_dimensions.width - instance->offset_x - instance->crop_right;
+        int height = window_dimensions.height - instance->offset_y - instance->crop_bottom;
+        if (width <= 0 || height <= 0) {
+            FBLOG_WARN(instance->ext_instance_ref, "inconsistent window crop? calculated invalid width=%d, height=%d past window search", width, height);
+            continue;
+        }
+
+        instance->width = width;
+        instance->height = height;
+        instance->expected_window_dimensions.width = window_dimensions.width;
+        instance->expected_window_dimensions.height = window_dimensions.height;
+        instance->window_handle = window_handle;
+
         // NOTE: buffers are only transferred to instance when locking the mutex, earlier aborts are not handled
         //       by aborting loop (generator_reset)
 
         FBLOG_DEBUG(instance->ext_instance_ref, "worker allocating buffers");
-        unsigned long buffer_size = 3 * window_dimensions.width * window_dimensions.height;
+        unsigned long buffer_size = 3 * instance->width * instance->height;
         unsigned char *buffers[2] = {NULL, NULL};
         buffers[0] = zmalloc(buffer_size);
         buffers[1] = zmalloc(buffer_size);
@@ -385,8 +424,6 @@ static int generate(void *data) {
             break;
         }
 
-        instance->width = window_dimensions.width;
-        instance->height = window_dimensions.height;
         instance->buffer_size = buffer_size;
         instance->buffers[0] = buffers[0];
         instance->buffers[1] = buffers[1];
@@ -652,6 +689,18 @@ static fberror_t capture_winrt_dxgi_configure_module(void *data, fbcollections_m
     }
     if (get_config_boolean(instance, "hide_capture_border", false)) {
         instance->capture_flags |= WINRT_DXGI_CAPTURE_FLAG_HIDE_BORDER;
+    }
+
+    instance->crop_top = get_config_int(instance, "crop.top", 0);
+    instance->crop_left = get_config_int(instance, "crop.left", 0);
+    instance->crop_right = get_config_int(instance, "crop.right", 0);
+    instance->crop_bottom = get_config_int(instance, "crop.bottom", 0);
+    if (instance->crop_top < 0 || instance->crop_bottom < 0 || instance->crop_left < 0 || instance->crop_right < 0) {
+        FBLOG_WARN(
+            instance->ext_instance_ref, "crop must be positive or zero, got left=%d, right=%d, top=%d, bottom=%d",
+            instance->crop_left, instance->crop_right, instance->crop_top, instance->crop_bottom
+        );
+        success = false;
     }
 
     instance->window_search_name_exact = copy_complete_string(get_config_pointer(instance, "window.search.name.exact"));

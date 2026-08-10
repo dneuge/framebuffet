@@ -20,19 +20,12 @@
 
 #define WINDOWS_BYTES_PER_PIXEL 4
 
-// FIXME: Do not hardcode - "overscan" is a drop shadow effect that may vary by OS version or HW install (Win 10 has 14,7; Win 11 has 0,0).
-//        Documentation and online posts indicate GetWindowRect may provide outer bounds (needed for capturing). Effect with DPI scaling is
-//        unknown ("virtualized" for GetWindowRect with capturing probably seeing it, window size not?) and needs to be tested.
-//        To avoid frustration if we get anything totally wrong (which we will) users should be given some config options to manually adjust
-//        offsets/overscan or scaling.
-//        It may also be a good idea to detect window size when setting up the capture session (i.e. not just abstracting/wrapping the
-//        "plain" Windows API here but already enhancing/securing the implementation).
-//        https://github.com/MicrosoftDocs/sdk-api/blob/07512580a99bac226f8730c8f85344270f1beeff/sdk-api-src/content/winuser/nf-winuser-getwindowrect.md
-// NOTE: size reported by DWMWA_EXTENDED_FRAME_BOUNDS seems correct but actual capture area has additional 14px blank pixels in width, 7px in height
+// NOTE: These "overscan" values are the extra margin observed on a Win10 installation.
+//       They may be related to an (invisible?) drop shadow effect that somehow cannot be queried nor is publicly
+//       documented on the API; it may vary by OS release or graphics/DPI settings.
+//       Use only as a vague approximation for worst-case buffer size estimation!
 #define OVERSCAN_WIDTH 14
 #define OVERSCAN_HEIGHT 7
-//#define OVERSCAN_WIDTH 0
-//#define OVERSCAN_HEIGHT 0
 
 bool create_window_capture_item(void *ext_instance_ref, HWND window_handle, win_graphics_capture_item_t **capture_item) {
     // closely based on:
@@ -186,8 +179,8 @@ bool copy_dxgi_frame(void *ext_instance_ref, win_capture_frame_pool_t frame_pool
     // === Frame Buffet custom copy code follows ===
     // for D3D11_TEXTURE2D_DESC see:
     // https://github.com/MicrosoftDocs/sdk-api/blob/07512580a99bac226f8730c8f85344270f1beeff/sdk-api-src/content/d3d11/ns-d3d11-d3d11_texture2d_desc.md
-    frame_info->width = desc.Width - OVERSCAN_WIDTH;
-    frame_info->height = desc.Height - OVERSCAN_HEIGHT;
+    frame_info->width = desc.Width;
+    frame_info->height = desc.Height;
     // TODO: verify image format (assuming BGRA8)
     frame_info->bytes_per_pixel = 4;
     frame_info->color_bitdepth = 8;
@@ -247,10 +240,10 @@ bool copy_dxgi_frame(void *ext_instance_ref, win_capture_frame_pool_t frame_pool
     // for D3D11_MAPPED_SUBRESOURCE see:
     // https://github.com/MicrosoftDocs/sdk-api/blob/07512580a99bac226f8730c8f85344270f1beeff/sdk-api-src/content/d3d11/ns-d3d11-d3d11_mapped_subresource.md
     frame_info->num_bytes_per_row = mapped.RowPitch;
-    long long image_size = mapped.RowPitch * (desc.Height - OVERSCAN_HEIGHT);
+    long long image_size = mapped.RowPitch * desc.Height;
     bool success = false;
     if (image_size < 0) {
-        FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame calculated negative image size, RowPitch=%d, Height=%d, OVERSCAN_HEIGHT=%d", mapped.RowPitch, desc.Height, OVERSCAN_HEIGHT);
+        FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame calculated negative image size, RowPitch=%d, Height=%d", mapped.RowPitch, desc.Height);
     } else if (image_size > buffer_size) {
         FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame got buffer of insufficient size; needed %z, got %z", image_size, buffer_size);
     } else {
@@ -369,6 +362,6 @@ void stop_capture_session(void *ext_instance_ref, fbsource_capture_session_t *se
 }
 
 size_t estimate_dxgi_buffer_size(window_dimensions_t window_dimensions) {
-    size_t minimum_size = (window_dimensions.height + OVERSCAN_HEIGHT) * ((window_dimensions.width + OVERSCAN_WIDTH) * WINDOWS_BYTES_PER_PIXEL);
+    size_t minimum_size = (window_dimensions.height + OVERSCAN_HEIGHT) * (window_dimensions.width + OVERSCAN_WIDTH) * WINDOWS_BYTES_PER_PIXEL;
     return minimum_size + (minimum_size * 5 / 100);
 }
