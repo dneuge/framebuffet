@@ -254,7 +254,7 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
 
     int minimum_frame_width = (instance->offset_x + instance->width);
     int minimum_frame_height = (instance->offset_y + instance->height);
-    if (frame_info.width < minimum_frame_height || frame_info.height < minimum_frame_height) {
+    if (frame_info.width < minimum_frame_width || frame_info.height < minimum_frame_height) {
         // FIXME: trigger reinitialization
         FBLOG_WARN(
             instance->ext_instance_ref, "insufficient size of received frame: frame_info.width=%d, frame_info.height=%d, minimum_frame_width=%d, minimum_frame_height=%d",
