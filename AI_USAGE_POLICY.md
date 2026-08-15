@@ -5,6 +5,9 @@
 > [!warning]
 > Even if you don't consciously use AI, you may be using it implicitly or encountering artifacts throughout the Internet and your toolchain. Therefore, before making *any* contributions to this project, you must carefully read and accept the terms laid out in this project.
 
+> [!note]
+> The terms of service of all platforms hosting this repository (official locations are on Codeberg and GitHub), must be obeyed **in addition** to this policy. This policy does not override platform policies and only addresses the project's own policy as a neutral, platform-independent instance. Hosting platforms may restrict accepted contents further, particularly regarding AI usage. If in conflict, the most restrictive parts of every applicable policy shall apply.
+
 ## What is AI?
 
 The general terms Artificial Intelligence (AI) and Machine Learning (ML) encompass a variety of technologies and mathematical constructs that aim to make predictive, analytical and somewhat "intelligent" decisions based on mathematical models and algorithms, usually in an automated fashion.
