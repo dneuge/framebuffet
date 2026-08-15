@@ -396,8 +396,12 @@ static fberror_t crop_configure_module(void *data, fbcollections_map_entry_t *co
         instance->buffers[1] = (unsigned char*) malloc(instance->buffer_size);
     }
 
-    // reset on error (buffers remain unallocated if input is wrong)
-    if (!instance->buffers[0] || !instance->buffers[1]) {
+    if (instance->buffers[0] && instance->buffers[1]) {
+        // clear buffers
+        memset(instance->buffers[0], 0, instance->buffer_size);
+        memset(instance->buffers[1], 0, instance->buffer_size);
+    } else {
+        // reset on error (buffers remain unallocated if input is wrong)
         if (instance->buffers[0]) {
             free(instance->buffers[0]);
             instance->buffers[0] = NULL;
