@@ -41,6 +41,11 @@ typedef struct {
     unsigned char *buffers[2];
     int complete_buffer;
 
+    cnd_t capture_status_cnd;
+    bool captured_frame;
+    bool want_reinit;
+    bool want_abort;
+
     // only handled by capture session (accessed without mutex)
     unsigned char *internal_buffer;
     size_t internal_buffer_size;

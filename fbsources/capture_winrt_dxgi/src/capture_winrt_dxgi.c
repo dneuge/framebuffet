@@ -19,6 +19,14 @@
 
 #define MAX_WINDOW_LENGTH (16383) /* arbitrarily chosen restriction for width/height to prevent excessive size allocation and do a sanity-check on API calls */
 
+#define NANOS_PER_MILLISECOND (1000000)
+#define CONDITIONAL_WAKEUP_INTERVAL_SECONDS (2)
+
+static const struct timespec active_check_sleep = {
+    .tv_sec = 0,
+    .tv_nsec = 200 * NANOS_PER_MILLISECOND
+};
+
 static const struct timespec wait_for_window = {
     .tv_sec = 2,
     .tv_nsec = 0
@@ -28,6 +36,23 @@ static const struct timespec wait_after_error = {
     .tv_sec = 1,
     .tv_nsec = 0
 };
+
+static bool set_now_plus_seconds(struct timespec *out, uint16_t seconds) {
+    if (!out) {
+        return false;
+    }
+
+    struct timespec now = {0,};
+    int res = timespec_get(&now, TIME_UTC);
+    if (res == 0 || res != TIME_UTC) {
+        return false;
+    }
+
+    out->tv_sec = now.tv_sec + seconds;
+    out->tv_nsec = now.tv_nsec;
+
+    return true;
+}
 
 static bool find_window(fbsource_capture_winrt_dxgi_t *instance, HWND *handle, window_dimensions_t *dimensions, char *exact_name) {
     window_dimensions_t found_dimensions = {0,};
@@ -218,66 +243,84 @@ static uint8_t calc_shift(uint32_t mask) {
     return shift;
 }
 
+static inline void raise_reinit_flag(fbsource_capture_winrt_dxgi_t *instance) {
+    instance->want_reinit = true;
+    cnd_broadcast(&instance->capture_status_cnd);
+}
+
+static inline void raise_abort_flag(fbsource_capture_winrt_dxgi_t *instance) {
+    instance->want_abort = true;
+    cnd_broadcast(&instance->capture_status_cnd);
+}
+
+static inline void raise_captured_frame_flag(fbsource_capture_winrt_dxgi_t *instance) {
+    instance->captured_frame = true;
+}
+
 static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_pool_t frame_pool) {
     if (!ref) {
         return;
     }
 
     fbsource_capture_winrt_dxgi_t *instance = ref;
+    if (instance->stop_generator) {
+        return;
+    }
+
     FBLOG_DEBUG(instance->ext_instance_ref, "frame available");
 
     clock_t benchStart = clock(); // DEBUG
 
     winrt_dxgi_frame_info_t frame_info = {0,};
     if (!copy_dxgi_frame(instance->ext_instance_ref, frame_pool, instance->internal_buffer, instance->internal_buffer_size, &frame_info)) {
-        // FIXME: trigger reinitialization
         FBLOG_WARN(instance->ext_instance_ref, "failed to copy frame from DirectX capture session to internal buffer");
+        raise_reinit_flag(instance);
         return;
     }
 
     window_dimensions_t window_dimensions = {0,};
     if (!get_window_dimensions(instance->window_handle, &window_dimensions)) {
-        // FIXME: trigger reinitialization
         FBLOG_WARN(instance->ext_instance_ref, "failed to retrieve window size");
+        raise_reinit_flag(instance);
         return;
     }
 
     if ((instance->expected_window_dimensions.width != window_dimensions.width) || (instance->expected_window_dimensions.height != window_dimensions.height)) {
-        // FIXME: trigger reinitialization
         FBLOG_INFO(
             instance->ext_instance_ref, "window size changed, width %u => %u, height %u => %u",
             instance->expected_window_dimensions.width, window_dimensions.width,
             instance->expected_window_dimensions.height, window_dimensions.height
         );
+        raise_reinit_flag(instance);
         return;
     }
 
     int minimum_frame_width = (instance->offset_x + instance->width);
     int minimum_frame_height = (instance->offset_y + instance->height);
     if (frame_info.width < minimum_frame_width || frame_info.height < minimum_frame_height) {
-        // FIXME: trigger reinitialization
         FBLOG_WARN(
             instance->ext_instance_ref, "insufficient size of received frame: frame_info.width=%d, frame_info.height=%d, minimum_frame_width=%d, minimum_frame_height=%d",
             frame_info.width, frame_info.height, minimum_frame_width, minimum_frame_height
         );
+        raise_reinit_flag(instance);
         return;
     }
 
     if (frame_info.color_bitdepth != 8) {
-        // FIXME: trigger abort
         FBLOG_WARN(instance->ext_instance_ref, "unsupported color bit depth, need 8 bit, got %u", frame_info.color_bitdepth);
+        raise_abort_flag(instance);
         return;
     }
     if (frame_info.bytes_per_pixel != 4) {
-        // FIXME: trigger abort
         FBLOG_WARN(instance->ext_instance_ref, "unsupported number of bytes per pixel, need 4 bytes (32 bit), got %u (%u bit)", frame_info.bytes_per_pixel, frame_info.bytes_per_pixel*8);
+        raise_abort_flag(instance);
         return;
     }
     clock_t benchGotImage = clock(); // DEBUG
 
     if (frame_info.num_bytes_per_row % frame_info.bytes_per_pixel != 0) {
-        // FIXME: trigger reinitialization
         FBLOG_WARN(instance->ext_instance_ref, "number of bytes per row is not aligned with bytes per pixel: num_bytes_per_row=%u, bytes_per_pixel=%u", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel);
+        raise_reinit_flag(instance);
         return;
     }
     uint32_t frame_pixels_per_row = frame_info.num_bytes_per_row / frame_info.bytes_per_pixel;
@@ -324,6 +367,8 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
     mtx_unlock(&instance->mutex);
     clock_t benchUnlocked = clock(); // DEBUG
 
+    raise_captured_frame_flag(instance);
+
     framebuffet_publish_update(instance->ext_instance_ref, 0, instance->frame_token);
 
     clock_t benchDone = clock(); // DEBUG
@@ -337,7 +382,6 @@ static int generate(void *data) {
     int res;
 
     bool success;
-    bool processed_image = false;
 
     FBLOG_INFO(instance->ext_instance_ref, "worker thread started");
 
@@ -351,7 +395,6 @@ static int generate(void *data) {
     while (!instance->stop_generator) {
         // window may not be immediately available, wait until it appears
         success = false;
-        processed_image = false;
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching window");
             success = find_window(instance, &window_handle, &window_dimensions, instance->window_search_name_exact);
@@ -386,6 +429,9 @@ static int generate(void *data) {
         instance->expected_window_dimensions.width = window_dimensions.width;
         instance->expected_window_dimensions.height = window_dimensions.height;
         instance->window_handle = window_handle;
+        instance->captured_frame = false;
+        instance->want_abort = false;
+        instance->want_reinit = false;
 
         // NOTE: buffers are only transferred to instance when locking the mutex, earlier aborts are not handled
         //       by aborting loop (generator_reset)
@@ -477,30 +523,59 @@ static int generate(void *data) {
         }
         */
 
+        bool mutex_locked = false;
+        bool use_conditional_wait = true;
+        FBLOG_DEBUG(instance->ext_instance_ref, "generator thread locking mutex");
+        if (mtx_lock(&instance->mutex) != thrd_success) {
+            FBLOG_WARN(instance->ext_instance_ref, "failed to lock mutex for conditional wait loop, falling back to active checks");
+            use_conditional_wait = false;
+        } else {
+            FBLOG_DEBUG(instance->ext_instance_ref, "generator thread locked mutex");
+            mutex_locked = true;
+        }
         while (!instance->stop_generator) {
-            bool visual_changed = false;
+            if (!use_conditional_wait || !mutex_locked) {
+                if (mutex_locked) {
+                    FBLOG_DEBUG(instance->ext_instance_ref, "generator thread unlocking mutex because conditional wait is not usable");
+                    mtx_unlock(&instance->mutex);
+                    FBLOG_DEBUG(instance->ext_instance_ref, "generator thread unlocked mutex");
+                    mutex_locked = false;
+                }
 
-            // FIXME: monitor for reinitialization requests from capture session thread
-
-            /*
-            if (visual_changed) {
-                FBLOG_WARN(instance->ext_instance_ref, "visual type changed; conversion is not possible, reinitializing...");
-                break;
+                thrd_sleep(&active_check_sleep, NULL);
+                FBLOG_TRACE(instance->ext_instance_ref, "generator thread waking up for active check (conditional wait is disabled)");
+            } else {
+                const struct timespec wakeup_time = {0,};
+                if (!set_now_plus_seconds(&wakeup_time, CONDITIONAL_WAKEUP_INTERVAL_SECONDS)) {
+                    FBLOG_WARN(instance->ext_instance_ref, "failed to compute wakeup timestamp for conditional wait loop, falling back to active checks");
+                    use_conditional_wait = false;
+                } else {
+                    res = cnd_timedwait(&instance->capture_status_cnd, &instance->mutex, &wakeup_time);
+                    if (res == thrd_success || res == thrd_timedout) {
+                        FBLOG_TRACE(instance->ext_instance_ref, "generator thread woken up by conditional");
+                    } else {
+                        FBLOG_WARN(instance->ext_instance_ref, "failed conditional wait, falling back to active checks");
+                        use_conditional_wait = false;
+                    }
+                }
             }
 
-            if (!image_data) {
-                FBLOG_WARN(instance->ext_instance_ref, "missing image data, reinitializing...");
+            if (instance->want_reinit || instance->want_abort) {
+                FBLOG_DEBUG(instance->ext_instance_ref, "capture session thread status: want_reinit=%d, want_abort=%d", instance->want_reinit, instance->want_abort);
                 break;
             }
-            */
+        }
+        if (mutex_locked) {
+            FBLOG_DEBUG(instance->ext_instance_ref, "generator thread unlocking mutex after loop");
+            mtx_unlock(&instance->mutex);
+            FBLOG_DEBUG(instance->ext_instance_ref, "generator thread unlocked mutex");
+            mutex_locked = false;
         }
 
-        /*
-        if (window_configuration_changed) {
-            FBLOG_INFO(instance->ext_instance_ref, "window size or availability changed, reinitializing");
+        if (instance->want_abort) {
+            FBLOG_WARN(instance->ext_instance_ref, "capture session requested abort");
             break;
         }
-        */
 
         // if we got here we are reinitializing or stopping and need to reset
 
@@ -515,7 +590,7 @@ static int generate(void *data) {
         }
 
         // prevent rapid reinitialization after errors; only reinitialize without delay if we processed at least one image before
-        if (!processed_image) {
+        if (!instance->captured_frame) {
             thrd_sleep(&wait_after_error, NULL);
         }
     }
@@ -546,6 +621,14 @@ static fberror_t capture_winrt_dxgi_create(framebuffet_t *framebuffet, void *ins
     }
 
     if (mtx_init(&instance->mutex, mtx_plain) != thrd_success) {
+        destroy_d3d_device(instance_ref, instance->d3d_device);
+        instance->d3d_device = NULL;
+        free(instance);
+        return FBERROR_UNSPECIFIC;
+    }
+
+    if (cnd_init(&instance->capture_status_cnd) != thrd_success) {
+        mtx_destroy(&instance->mutex);
         destroy_d3d_device(instance_ref, instance->d3d_device);
         instance->d3d_device = NULL;
         free(instance);
@@ -601,7 +684,9 @@ static fberror_t capture_winrt_dxgi_destroy(void *data) {
         free(instance->window_search_name_exact);
     }
     
-    // FIXME: make sure nothing is waiting for the mutex before it gets destroyed
+    // FIXME: make sure nothing is waiting for conditional or mutex before it gets destroyed
+    cnd_broadcast(&instance->capture_status_cnd);
+    cnd_destroy(&instance->capture_status_cnd);
     mtx_destroy(&instance->mutex);
 
     destroy_d3d_device(instance->ext_instance_ref, instance->d3d_device);
