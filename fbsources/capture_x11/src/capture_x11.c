@@ -1211,7 +1211,7 @@ static int generate(void *data) {
 
                 clock_t benchStart = clock(); // DEBUG
                 if (use_shm) {
-                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, source_drawable, geom->x, geom->y, geom->width, geom->height, ~0, format, instance->shm_info.shmseg, 0);
+                    xcb_shm_get_image_cookie_t shm_get_image_cookie = xcb_shm_get_image(instance->xcb_conn, source_drawable, 0, 0, geom->width, geom->height, ~0, format, instance->shm_info.shmseg, 0);
                     xcb_shm_get_image_reply_t *shm_get_image_reply = xcb_shm_get_image_reply(instance->xcb_conn, shm_get_image_cookie, &xcb_err);
                     if (shm_get_image_reply && !xcb_err) {
                         visual_changed = shm_get_image_reply->visual && (xcb_visualtype->visual_id != shm_get_image_reply->visual);
@@ -1232,7 +1232,7 @@ static int generate(void *data) {
                         break;
                     }
                 } else {
-                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, source_drawable, geom->x, geom->y, geom->width, geom->height, ~0);
+                    xcb_get_image_cookie_t get_image_cookie = xcb_get_image(instance->xcb_conn, format, source_drawable, 0, 0, geom->width, geom->height, ~0);
                     get_image_reply = xcb_get_image_reply(instance->xcb_conn, get_image_cookie, &xcb_err);
                     if (get_image_reply && !xcb_err) {
                         visual_changed = get_image_reply->visual && (xcb_visualtype->visual_id != get_image_reply->visual);
