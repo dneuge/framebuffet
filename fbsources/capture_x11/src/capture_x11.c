@@ -1050,7 +1050,14 @@ static int generate(void *data) {
         xcb_get_window_attributes_cookie_t get_window_attributes_cookie = xcb_get_window_attributes(instance->xcb_conn, instance->window);
         xcb_get_window_attributes_reply_t *get_window_attributes_reply = xcb_get_window_attributes_reply(instance->xcb_conn, get_window_attributes_cookie, &xcb_err);
         if (get_window_attributes_reply && !xcb_err) {
-            xcb_visualtype = xcb_aux_get_visualtype(instance->xcb_conn, screen_number, get_window_attributes_reply->visual);
+            // NOTE: xcb_aux_get_visualtype has a faulty iterator loop, we need to use xcb_aux_find_visual_by_id instead
+            xcb_screen_t *screen = xcb_aux_get_screen(instance->xcb_conn, screen_number); // do not free, shared pointer
+            if (!screen) {
+                FBLOG_WARN(instance->ext_instance_ref, "xcb_aux_get_screen did not find screen %d, unable to look up visual=%u", screen_number, get_window_attributes_reply->visual);
+            } else {
+                FBLOG_DEBUG(instance->ext_instance_ref, "calling xcb_aux_find_visual_by_id for visual=%u (screen_number=%d)", get_window_attributes_reply->visual, screen_number);
+                xcb_visualtype = xcb_aux_find_visual_by_id(screen, get_window_attributes_reply->visual);
+            }
         }
         bool got_get_window_attributes_reply = false;
         if (get_window_attributes_reply) {
