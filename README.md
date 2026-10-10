@@ -31,8 +31,9 @@ The following modules are included with the current version of Frame Buffet:
   * [`merge`](fbsources/merge) combines rectangular parts from other sources
 * platform-dependent:
   * [`capture_x11`](fbsources/capture_x11) implements screen capture on Linux for X11
+  * [`capture_winrt_dxgi`](fbsources/capture_winrt_dxgi) implements screen capture on Windows via DirectX (WinRT/DXGI)
 
-Additional screen capture modules for Windows and the macOS® operating system are expected to be added H1/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
+An additional screen capture module for the macOS® operating system is expected to be added H2/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
 
 ### Framework bindings
 
