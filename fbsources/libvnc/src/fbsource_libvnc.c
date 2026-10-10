@@ -1,3 +1,27 @@
+/**
+ * LICENSE CLARIFICATION
+ * =====================
+ *
+ * This source code file binds to LibVNC which, together with some of its dependencies, is only available under the
+ * terms of restrictive and/or viral licenses such as GPL.
+ * The overall project, that this module belongs to, prefers developing and sharing its code under a more permissive
+ * MIT license.
+ *
+ * The MIT license allows sub-licensing and thus adapting the license of this module to e.g. GPL, if needed.
+ * To allow re-use and ease overall project handling, any code sections that are unrelated to LibVNC or any other
+ * virally licensed dependency shall be regarded as MIT-licensed. This may require to be decided on a line-by-line basis
+ * but the intention of this project is to be more open to sharing work than GPL permits.
+ *
+ * When you compile & link this module, the resulting artifacts become inseparable from restrictively licensed code.
+ * Therefore, the module actually indicates itself as GPL2 licensed at runtime despite being (at least partially) being
+ * MIT licensed while in form of uncompiled source code.
+ *
+ * You must not use this module without complying to GPL v2 or later.
+ *
+ * When contributing changes, please take note that (following the overall project's license) your contribution is
+ * actually made under MIT license, more restrictive licenses only apply when needed.
+ */
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
