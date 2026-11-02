@@ -275,7 +275,7 @@ static void* wrap_thread_func(void *arg) {
     return arg;
 }
 
-static void* zmalloc(size_t size) {
+static void* tmcs_zmalloc(size_t size) {
     // prevent zero allocation requests as some malloc implementations may corrupt in that case
     if (size == 0) {
         return NULL;
@@ -289,7 +289,7 @@ static void* zmalloc(size_t size) {
 }
 
 static int thrd_create(thrd_t *thr, thrd_start_t func, void *arg) {
-    wrapped_thread_t *wrapped = zmalloc(sizeof(wrapped_thread_t));
+    wrapped_thread_t *wrapped = tmcs_zmalloc(sizeof(wrapped_thread_t));
     if (!wrapped) {
         printf("[threads_macos_compat] thrd_create out of memory?\n");
         return thrd_error;
