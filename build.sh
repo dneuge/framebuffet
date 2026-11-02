@@ -36,6 +36,11 @@ cd "${script_dir}/fbsources/merge"
 ./build.sh $@ || die "Building merge source failed"
 echo
 
+echo "=== Building capture macOS/ScreenCaptureKit source ==="
+cd "${script_dir}/fbsources/capture_macos_sck"
+./build.sh $@ || die "Building capture macOS/ScreenCaptureKit source failed"
+echo
+
 echo "=== Building capture WinRT/DXGI source ==="
 cd "${script_dir}/fbsources/capture_winrt_dxgi"
 ./build.sh $@ || die "Building capture WinRT/DXGI source failed"
