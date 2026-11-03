@@ -81,7 +81,7 @@
     self->streamConfig.showsCursor = FALSE; // TODO: make configurable?
     self->streamConfig.shouldBeOpaque = TRUE; // TODO: documented as solid white - but is it even if we configured the background to black?!
     self->streamConfig.ignoreShadowsSingleWindow = TRUE;
-    self->streamConfig.ignoreGlobalClipSingleWindow = FALSE;
+    self->streamConfig.ignoreGlobalClipSingleWindow = TRUE;
     // TODO: make minimumFrameInterval configurable (max. FPS to be captured at)
     //self->streamConfig.captureResolution = SCCaptureResolutionNominal; // TODO: confirm "nominal" is the correct mode; this may refer to scaling back high DPI/Retina displays?
     self->streamConfig.capturesAudio = FALSE;
