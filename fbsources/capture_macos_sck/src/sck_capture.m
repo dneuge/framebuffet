@@ -11,7 +11,6 @@
 #include "sck_capture.h"
 
 #define ABS_DIMENSION_ERROR_TOLERANCE (0.1)
-#define BUFFER_SCALE_FACTOR (2.0) /* TODO: make configurable/auto-detect from display scaleFactor */
 
 @implementation CaptureHandler
 -(bool)setupFor:(void*)new_ext_instance_ref captureWindow:(window_parameters_t)new_window_params withTimeout:(uint32_t)timeout_millis withCallback:(sck_frame_callback_f)new_frame_callback withCallbackReference:(void*)new_frame_callback_ref {
@@ -70,8 +69,8 @@
     // NOTE: apparently we need an at least 2x oversized buffer, otherwise we end up with oddly scaled-down content
     FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: creating stream configuration");
     self->streamConfig = [SCStreamConfiguration new];
-    self->streamConfig.width = lround(windowFrame.size.width * BUFFER_SCALE_FACTOR) + 1;
-    self->streamConfig.height = lround(windowFrame.size.height * BUFFER_SCALE_FACTOR) + 1;
+    self->streamConfig.width = lround(windowFrame.size.width);
+    self->streamConfig.height = lround(windowFrame.size.height);
     self->streamConfig.scalesToFit = FALSE;
     self->streamConfig.pixelFormat = kCVPixelFormatType_32BGRA;
     //self->streamConfig.pixelFormat = 'BGRA';
@@ -302,14 +301,16 @@
         return;
     }
 
-    // According to Swift documentation in XCode, the scale factor indicates the display's scaling factor
-    // which appears to not influence actual window content (see content scale instead).
+    // According to Swift documentation in XCode, the scale factor indicates the display's scaling factor.
+    // It seems that this directly affects the content box, if the screen is being scaled back down (e.g. 4K TV showing
+    // Full HD; undocumented behaviour).
     CFNumberRef scaleFactorRef = (CFNumberRef) CFDictionaryGetValue(sampleDictionary, SCStreamFrameInfoScaleFactor);
     CGFloat scaleFactor = NAN;
     if (!CFNumberGetValue(scaleFactorRef, kCFNumberCGFloatType, &scaleFactor)) {
         // Apple's example strictly requires this value but it shouldn't be important for us so we continue regardless
-        FBLOG_DEBUG(self->ext_instance_ref, "stream callback: received sample without scale factor");
-        scaleFactor = NAN;
+        // TODO: fail capture
+        FBLOG_WARN(self->ext_instance_ref, "stream callback: received sample without scale factor");
+        return;
     }
 
     CFDictionaryRef contentRectDictionary = (CFDictionaryRef) CFDictionaryGetValue(sampleDictionary, SCStreamFrameInfoContentRect);
@@ -324,13 +325,12 @@
     }
 
     // According to Swift documentation in XCode, this is the scaling factor of the content we capture.
-    // As long as we don't overscale and request "scale to fit" we should always see a 1:1 ratio between "points"
-    // and pixels. With "scale to fit" enabled, the factor increases accordingly and may also surpass the display's
-    // scale factor.
+    // This appears to change with "scalesToFit" but it fails to indicate backscaled content (undocumented behaviour).
     CFNumberRef contentScaleRef = (CFNumberRef) CFDictionaryGetValue(sampleDictionary, SCStreamFrameInfoContentScale);
     CGFloat contentScale = NAN;
     if (!CFNumberGetValue(contentScaleRef, kCFNumberCGFloatType, &contentScale)) {
-        FBLOG_DEBUG(self->ext_instance_ref, "stream callback: received sample has no contentScale");
+        FBLOG_WARN(self->ext_instance_ref, "stream callback: received sample has no contentScale");
+        return;
     }
 
     size_t numBytesTotal = IOSurfaceGetAllocSize(ioSurfaceRef);
@@ -355,6 +355,26 @@
         scaleFactor, contentScale, contentRect.size.width, contentRect.size.height, contentRect.origin.x, contentRect.origin.y,
         ioSurfaceBaseAddr
     );
+
+    // Check that we actually get 1:1 scaled content. If the display output is being over- and backscaled, the actual
+    // scale is only apparent by multiplying scale factor and content scale (e.g. 2.0 * 0.5 = 1.0).
+    double actualScale = scaleFactor * contentScale;
+    if (IS_APPROXIMATELY(scaleFactor, 1.0, 0.005)) {
+        // TODO: fail capture (unlikely to resolve on its own)
+        FBLOG_WARN(
+            self->ext_instance_ref,
+            "stream callback: calculated actualScale=%.3f which is out of tolerance (expected 1.0); scaleFactor=%.1f, contentScale=%.1f",
+            actualScale, scaleFactor, contentScale
+        );
+        return;
+    }
+
+    // On a backscaled display the content box we receive is scaled down, so we need to correct it using the display's
+    // scale factor again.
+    double content_height = contentRect.size.height * scaleFactor;
+    double content_width = contentRect.size.width * scaleFactor;
+    double content_offset_x = contentRect.origin.x * scaleFactor;
+    double content_offset_y = contentRect.origin.y * scaleFactor;
 
     if (elementWidth != 1 || elementHeight != 1) {
         // TODO: fail capture (unlikely to resolve on its own)
@@ -411,56 +431,65 @@
         return;
     }
 
-    if (contentRect.size.width < 1.0-ABS_DIMENSION_ERROR_TOLERANCE || contentRect.size.height < 1.0-ABS_DIMENSION_ERROR_TOLERANCE) {
+    if (content_width < 1.0-ABS_DIMENSION_ERROR_TOLERANCE || content_height < 1.0-ABS_DIMENSION_ERROR_TOLERANCE) {
         // TODO: fail capture
         FBLOG_WARN(
-            self->ext_instance_ref, "stream callback: undersize content dimensions contentRect.size=[%.4f, %.4f]",
-            contentRect.size.width, contentRect.size.height
+            self->ext_instance_ref, "stream callback: undersize content dimensions [%.4f, %.4f], contentRect.size=[%.4f, %.4f], scaleFactor=%.1f",
+            content_width, content_height, contentRect.size.width, contentRect.size.height, scaleFactor
         );
         return;
     }
 
-    double widthError = contentRect.size.width - round(contentRect.size.width);
-    double heightError = contentRect.size.height - round(contentRect.size.height);
+    double widthError = content_width - round(content_width);
+    double heightError = content_height - round(content_height);
     if (fabs(widthError) > ABS_DIMENSION_ERROR_TOLERANCE || fabs(heightError) > ABS_DIMENSION_ERROR_TOLERANCE) {
         // TODO: fail capture
         FBLOG_WARN(
-            self->ext_instance_ref, "stream callback: content dimensions have excessive error contentRect.size=[%.4f, %.4f] => errors %.4f, %.4f; accepting %.4f",
-            contentRect.size.width, contentRect.size.height, widthError, heightError, ABS_DIMENSION_ERROR_TOLERANCE
+            self->ext_instance_ref,
+            "stream callback: content dimensions [%.4f, %.4f] have excessive error; contentRect.size=[%.4f, %.4f], "
+            "scaleFactor=%.1f => errors %.4f, %.4f; requiring at most %.4f",
+            content_width, content_height, contentRect.size.width, contentRect.size.height,
+            scaleFactor, widthError, heightError, ABS_DIMENSION_ERROR_TOLERANCE
         );
         return;
     }
 
-    double xError = contentRect.origin.x - round(contentRect.origin.x);
-    double yError = contentRect.origin.y - round(contentRect.origin.y);
+    double xError = content_offset_x - round(content_offset_x);
+    double yError = content_offset_y - round(content_offset_y);
     if (fabs(xError) > ABS_DIMENSION_ERROR_TOLERANCE || fabs(yError) > ABS_DIMENSION_ERROR_TOLERANCE) {
         // TODO: fail capture
         FBLOG_WARN(
-            self->ext_instance_ref, "stream callback: content origin has excessive error contentRect.origin=[%.4f, %.4f] => errors %.4f, %.4f; accepting %.4f",
-            contentRect.origin.x, contentRect.origin.y, xError, yError, ABS_DIMENSION_ERROR_TOLERANCE
+            self->ext_instance_ref,
+            "stream callback: content origin [%.4f, %.4f] has excessive error; contentRect.origin=[%.4f, %.4f], "
+            "scaleFactor=%.1f => errors %.4f, %.4f; requiring at most %.4f",
+            content_offset_x, content_offset_y, contentRect.origin.x, contentRect.origin.y,
+            scaleFactor, xError, yError, ABS_DIMENSION_ERROR_TOLERANCE
         );
         return;
     }
 
-    if (contentRect.origin.x < 0.0 || contentRect.origin.y < 0.0) {
+    if (content_offset_x < 0.0 || content_offset_y < 0.0) {
         // TODO: fail capture
         FBLOG_WARN(
-            self->ext_instance_ref, "stream callback: negative content origin is not supported, got [%.4f, %.4f]",
-            contentRect.origin.x, contentRect.origin.y
+            self->ext_instance_ref,
+            "stream callback: negative content origin is not supported, got [%.4f, %.4f]; "
+            "contentRect.origin=[%.4f, %.4f], scaleFactor=%.1f",
+            content_offset_x, content_offset_y,
+            contentRect.origin.x, contentRect.origin.y, scaleFactor
         );
         return;
     }
 
-    long minWidth = lround(contentRect.origin.x) + lround(contentRect.size.width);
-    long minHeight = lround(contentRect.origin.y) + lround(contentRect.size.height);
+    long minWidth = lround(content_offset_x) + lround(content_width);
+    long minHeight = lround(content_offset_y) + lround(content_height);
     if (bufferWidth < minWidth || bufferHeight < minHeight) {
         // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: insufficient buffer dimensions, got "
-            "minWidth=%ld (%.1f * %.1f), bufferWidth=%ld, "
-            "minHeight=%ld (%.1f * %.1f), bufferHeight=%ld",
-            minWidth, contentRect.origin.x, contentRect.size.width, bufferWidth,
-            minHeight, contentRect.origin.y, contentRect.size.height, bufferHeight
+            "minWidth=%ld (%.1f + %.1f | (%.1f + %.1f) * %.1f), bufferWidth=%ld, "
+            "minHeight=%ld (%.1f + %.1f | (%.1f + %.1f) * %.1f), bufferHeight=%ld",
+            minWidth, content_offset_x, content_width, contentRect.origin.x, contentRect.size.width, scaleFactor, bufferWidth,
+            minHeight, content_offset_y, content_height, contentRect.origin.y, contentRect.size.height, scaleFactor, bufferHeight
         );
         return;
     }
@@ -470,10 +499,10 @@
         .buffer_size = numBytesTotal,
         .bytes_per_pixel = numBytesPerPixel,
         .bytes_per_row = numBytesPerRow,
-        .content_offset_x = contentRect.origin.x,
-        .content_offset_y = contentRect.origin.y,
-        .content_width = contentRect.size.width,
-        .content_height = contentRect.size.height,
+        .content_offset_x = content_offset_x,
+        .content_offset_y = content_offset_y,
+        .content_width = content_width,
+        .content_height = content_height,
         .content_scale = contentScale,
         .pixel_format = callback_pixel_format,
     };
