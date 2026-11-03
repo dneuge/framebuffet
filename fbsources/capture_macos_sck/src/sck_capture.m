@@ -76,7 +76,7 @@
     self->streamConfig.pixelFormat = kCVPixelFormatType_32BGRA;
     //self->streamConfig.pixelFormat = 'BGRA';
     //self->streamConfig.pixelFormat = *((OSType*) (char*) "ARGB"); // FIXME: use constant
-    // TODO: configure color space to be sRGB-ish?
+    self->streamConfig.colorSpaceName = kCGColorSpaceSRGB;
     self->streamConfig.backgroundColor = bgColorRef; // TODO: make configurable?
     self->streamConfig.showsCursor = FALSE; // TODO: make configurable?
     self->streamConfig.shouldBeOpaque = TRUE; // TODO: documented as solid white - but is it even if we configured the background to black?!
