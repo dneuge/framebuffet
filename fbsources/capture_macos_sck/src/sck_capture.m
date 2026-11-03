@@ -72,6 +72,7 @@
     self->streamConfig.width = lround(windowFrame.size.width);
     self->streamConfig.height = lround(windowFrame.size.height);
     self->streamConfig.scalesToFit = FALSE;
+    self->streamConfig.preservesAspectRatio = TRUE;
     self->streamConfig.pixelFormat = kCVPixelFormatType_32BGRA;
     //self->streamConfig.pixelFormat = 'BGRA';
     //self->streamConfig.pixelFormat = *((OSType*) (char*) "ARGB"); // FIXME: use constant
