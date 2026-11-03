@@ -20,6 +20,12 @@ The static module `fbsource_capture_macos_sck.a` requires integrating applicatio
 SET_PROPERTY(TARGET yourArtifact APPEND_STRING PROPERTY LINK_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -framework ScreenCaptureKit")
 ```
 
+If you link without Objective-C support you may need to list all transitive dependencies as well:
+
+```cmake
+SET_PROPERTY(TARGET yourArtifact APPEND_STRING PROPERTY LINK_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -framework ScreenCaptureKit -framework CoreGraphics -framework CoreMedia -framework CoreVideo -framework IOSurface -framework Foundation")
+```
+
 ## Runtime Permissions
 
 As soon as the module is configured **for the first time** within an application, the macOS operating system will raise a popup informing the user that explicit permission must be granted to unlock screen capturing. This module will be unable to list and find windows until confirmed. Note that the application is not the same as the process this module runs in. For example, using this module from an OS-independent tool on the Terminal application will make the operating system raise a permission request for Terminal, not the specific tool. When using this module for a standalone application (not as part of a library) you should ensure to integrate it into a proper application as seen by the operating system to prevent confusion and overly generic permission grants.
