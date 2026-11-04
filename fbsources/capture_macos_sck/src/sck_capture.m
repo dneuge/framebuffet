@@ -37,14 +37,14 @@
     self->frame_callback = new_frame_callback;
     self->frame_callback_ref = new_frame_callback_ref;
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: searching window");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: searching window");
     self->window = findWindow(self->window_params.id, timeout_millis);
     if (!self->window) {
         FBLOG_WARN(self->ext_instance_ref, "setup_capture: failed to find window %" PRIu32 " within %" PRIu32 "ms", window_params.id, timeout_millis);
         return false;
     }
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: checking window frame");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: checking window frame");
     CGRect windowFrame = [window frame];
     if (windowFrame.size.width != self->window_params.width || windowFrame.size.height != self->window_params.height) {
         FBLOG_WARN(
@@ -60,14 +60,14 @@
     // https://developer.apple.com/forums/thread/743615
     CGMainDisplayID();
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: initializing content filter");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: initializing content filter");
     self->contentFilter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:window];
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: setting up background color");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: setting up background color");
     self->bgColorRef = CGColorCreateGenericRGB(0.0, 0.0, 0.0, 1.0);
 
     // NOTE: apparently we need an at least 2x oversized buffer, otherwise we end up with oddly scaled-down content
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: creating stream configuration");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: creating stream configuration");
     self->streamConfig = [SCStreamConfiguration new];
     self->streamConfig.width = lround(windowFrame.size.width);
     self->streamConfig.height = lround(windowFrame.size.height);
@@ -92,12 +92,12 @@
     self->streamConfig.includeChildWindows = TRUE;
     self->streamConfig.showMouseClicks = FALSE; // TODO: make configurable?
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: allocating stream");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: allocating stream");
     self->stream = [SCStream alloc];
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: initializing stream");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: initializing stream");
     [self->stream initWithFilter:self->contentFilter configuration:self->streamConfig delegate:self];
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: creating dispatch queue");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: creating dispatch queue");
     self->queue = dispatch_queue_create("framebuffet.VideoQueue", DISPATCH_QUEUE_SERIAL); // FIXME: use instance-specific name + random ID
     if (self->queue == nil || self->queue == nsnull) {
         FBLOG_WARN(self->ext_instance_ref, "setup_capture: failed to create dispatch queue");
@@ -105,7 +105,7 @@
     }
     self->has_queue = true;
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: adding stream output");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: adding stream output");
     NSError *error = nil;
     [self->stream addStreamOutput:self type:SCStreamOutputTypeScreen sampleHandlerQueue:self->queue error:&error];
     if (error != nil && (id)error != nsnull) {
@@ -118,7 +118,7 @@
         return false;
     }
 
-    FBLOG_DEBUG(self->ext_instance_ref, "setup_capture: complete");
+    FBLOG_TRACE(self->ext_instance_ref, "setup_capture: complete");
     self->state = FBSOURCE_SCK_STATE_SETUP;
 
     return true;
@@ -344,7 +344,7 @@
     size_t bufferWidth = IOSurfaceGetWidth(ioSurfaceRef);
     size_t bufferHeight = IOSurfaceGetHeight(ioSurfaceRef);
 
-    FBLOG_DEBUG(
+    FBLOG_TRACE(
         self->ext_instance_ref, "stream callback: received numBytesTotal=%ld, numPlanes=%ld, pixelFormat=%s, "
         "numBytesPerPixel=%ld, numBytesPerRow=%ld, elementWidth=%ld, elementHeight=%ld, "
         "bufferWidth=%ld, bufferHeight=%ld; "
@@ -514,9 +514,9 @@
         return;
     }
 
-    FBLOG_DEBUG(self->ext_instance_ref, "stream callback: calling downstream");
+    FBLOG_TRACE(self->ext_instance_ref, "stream callback: calling downstream");
     checked_callback(self->frame_callback_ref, &callback_frame);
-    FBLOG_DEBUG(self->ext_instance_ref, "stream callback: done");
+    FBLOG_TRACE(self->ext_instance_ref, "stream callback: done");
 }
 
 -(void)stream:(SCStream*)stream didStopWithError:(NSError*)error {
@@ -530,28 +530,28 @@
 }
 
 -(void)streamDidBecomeActive:(SCStream*)stream {
-    FBLOG_DEBUG(self->ext_instance_ref, "streamDidBecomeActive got called");
+    FBLOG_TRACE(self->ext_instance_ref, "streamDidBecomeActive got called");
     // TODO: signal through state?
 }
 
 -(void)streamDidBecomeInactive:(SCStream*)stream {
-    FBLOG_DEBUG(self->ext_instance_ref, "streamDidBecomeInactive got called");
+    FBLOG_TRACE(self->ext_instance_ref, "streamDidBecomeInactive got called");
     // TODO: signal through state?
 }
 
 -(void)outputVideoEffectDidStartForStream:(SCStream*)stream {
     // ignored, nothing to do
-    FBLOG_DEBUG(self->ext_instance_ref, "outputVideoEffectDidStartForStream got called");
+    FBLOG_TRACE(self->ext_instance_ref, "outputVideoEffectDidStartForStream got called");
 }
 
 -(void)outputVideoEffectDidStopForStream:(SCStream*)stream {
     // ignored, nothing to do
-    FBLOG_DEBUG(self->ext_instance_ref, "outputVideoEffectDidStopForStream got called");
+    FBLOG_TRACE(self->ext_instance_ref, "outputVideoEffectDidStopForStream got called");
 }
 
 -(void)outputVideoEffectDidFailForStream:(SCStream*)stream withError:(NSError*)error {
     // ignored, nothing to do
-    FBLOG_DEBUG(self->ext_instance_ref, "outputVideoEffectDidFailForStream got called");
+    FBLOG_TRACE(self->ext_instance_ref, "outputVideoEffectDidFailForStream got called");
 }
 
 @end

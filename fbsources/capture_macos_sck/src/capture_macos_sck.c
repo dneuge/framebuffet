@@ -297,7 +297,9 @@ static void on_frame_received(void *ref, fbsource_sck_frame_t *frame) {
 
     clock_t benchDone = clock(); // DEBUG
 
-    FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %5.2fms = %5.1f FPS | grab %5.2f, convert %5.2f, transfer %.2f, publish %4.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchDone-benchUnlocked));
+    if (FBLOG_IS_TRACE_ENABLED(instance->ext_instance_ref)) {
+        FBLOG_TRACE(instance->ext_instance_ref, "benchmark: total %5.2fms = %5.1f FPS | grab %5.2f, convert %5.2f, transfer %.2f, publish %4.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchDone-benchUnlocked));
+    }
 }
 
 static int generate(void *data) {
@@ -331,7 +333,7 @@ static int generate(void *data) {
             }
             window_list_item_t *found = NULL;
             for (window_list_item_t *item = window_list; item; item = item->next) {
-                FBLOG_DEBUG(instance->ext_instance_ref, "window %" PRIu32 " %.1fx%.1f \"%s\"", item->params.id, item->params.width, item->params.height, item->title);
+                FBLOG_TRACE(instance->ext_instance_ref, "window %" PRIu32 " %.1fx%.1f \"%s\"", item->params.id, item->params.width, item->params.height, item->title);
                 if (!item->title || item->params.width < 0.9 || item->params.height < 0.9) {
                     continue;
                 }
@@ -432,12 +434,12 @@ static int generate(void *data) {
 
         bool mutex_locked = false;
         bool use_conditional_wait = true;
-        FBLOG_DEBUG(instance->ext_instance_ref, "generator thread locking mutex");
+        FBLOG_TRACE(instance->ext_instance_ref, "generator thread locking mutex");
         if (mtx_lock(&instance->mutex) != thrd_success) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to lock mutex for conditional wait loop, falling back to active checks");
             use_conditional_wait = false;
         } else {
-            FBLOG_DEBUG(instance->ext_instance_ref, "generator thread locked mutex");
+            FBLOG_TRACE(instance->ext_instance_ref, "generator thread locked mutex");
             mutex_locked = true;
         }
         while (!instance->stop_generator) {
