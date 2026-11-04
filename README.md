@@ -30,8 +30,9 @@ The following modules are included with the current version of Frame Buffet:
   * [`libvnc`](fbsources/libvnc) uses [LibVNC](https://github.com/LibVNC/libvncserver) to connect to a VNC server (note that LibVNC is [licensed GPL 2](https://github.com/LibVNC/libvncserver/blob/master/COPYING))
   * [`merge`](fbsources/merge) combines rectangular parts from other sources
 * platform-dependent:
-  * [`capture_x11`](fbsources/capture_x11) implements screen capture on Linux for X11
+  * [`capture_macos_sck`](fbsources/capture_macos_sck) implements screen capture on the macOS operating system via ScreenCaptureKit
   * [`capture_winrt_dxgi`](fbsources/capture_winrt_dxgi) implements screen capture on Windows via DirectX (WinRT/DXGI)
+  * [`capture_x11`](fbsources/capture_x11) implements screen capture on Linux for X11
 
 An additional screen capture module for the macOS® operating system is expected to be added H2/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
 
