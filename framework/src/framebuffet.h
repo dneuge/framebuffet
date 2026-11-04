@@ -437,6 +437,14 @@ void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...)
 __attribute__((__format__ (__printf__, 3, 0)))
 void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
 
+bool framebuffet_is_log_level_enabled(fbsource_module_instance_entry_t *module_instance_entry, fblog_level_t level);
+
+#if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_TRACE)
+#define FBLOG_IS_TRACE_ENABLED(ref) framebuffet_is_log_level_enabled(ref, FBLOG_LEVEL_TRACE)
+#else
+#define FBLOG_IS_TRACE_ENABLED(ref) (false)
+#endif
+
 char* framebuffet_get_source_name_reference(void *instance_ref); // does not return a copy!
 
 // API meant only for applications; should not be called from modules

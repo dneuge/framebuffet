@@ -270,6 +270,23 @@ fberror_t framebuffet_set_minimum_log_level(framebuffet_t *framebuffet, fblog_le
     return FBERROR_NONE;
 }
 
+bool framebuffet_is_log_level_enabled(fbsource_module_instance_entry_t *module_instance_entry, fblog_level_t level) {
+    if (level < FBLOG_COMPILED_MIN_LOG_LEVEL) {
+        return false;
+    }
+
+    if (!module_instance_entry) {
+        return false;
+    }
+
+    const framebuffet_t *framebuffet = module_instance_entry->framebuffet;
+    if (!framebuffet) {
+        return false;
+    }
+
+    return level >= framebuffet->minimum_log_level;
+}
+
 framebuffet_t* framebuffet_init() {
     framebuffet_t *out = malloc(sizeof(framebuffet_t));
     if (!out) {
