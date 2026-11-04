@@ -79,7 +79,7 @@
     self->streamConfig.colorSpaceName = kCGColorSpaceSRGB;
     self->streamConfig.backgroundColor = bgColorRef; // TODO: make configurable?
     self->streamConfig.showsCursor = FALSE; // TODO: make configurable?
-    self->streamConfig.shouldBeOpaque = TRUE; // TODO: documented as solid white - but is it even if we configured the background to black?!
+    self->streamConfig.shouldBeOpaque = FALSE; // NOTE: needs to stay disabled for selected background color to take effect
     self->streamConfig.ignoreShadowsSingleWindow = TRUE;
     self->streamConfig.ignoreGlobalClipSingleWindow = TRUE;
     // TODO: make minimumFrameInterval configurable (max. FPS to be captured at)
