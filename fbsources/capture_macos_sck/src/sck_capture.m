@@ -13,7 +13,12 @@
 #define ABS_DIMENSION_ERROR_TOLERANCE (0.1)
 
 @implementation CaptureHandler
--(bool)setupFor:(void*)new_ext_instance_ref captureWindow:(window_parameters_t)new_window_params withTimeout:(uint32_t)timeout_millis withCallback:(sck_frame_callback_f)new_frame_callback withCallbackReference:(void*)new_frame_callback_ref withErrorCallback:(sck_error_callback_f)new_error_callback withErrorCallbackReference:(void*)new_error_callback_ref {
+-(bool)         setupFor:(void*)new_ext_instance_ref
+           captureWindow:(window_parameters_t)new_window_params
+             withTimeout:(uint32_t)timeout_millis
+            withCallback:(sck_frame_callback_f)new_frame_callback      withCallbackReference:(void*)new_frame_callback_ref
+       withErrorCallback:(sck_error_callback_f)new_error_callback withErrorCallbackReference:(void*)new_error_callback_ref
+{
     // NOTE: Only to be handled through setup_capture, do not call directly! On failure, memory needs to be released
     //       through deallocation (not done by this method).
 
@@ -588,9 +593,18 @@
 
 @end
 
-fbsource_sck_capture_handler_t setup_capture(void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis, sck_frame_callback_f frame_callback, void *frame_callback_ref, sck_error_callback_f error_callback, void *error_callback_ref) {
+fbsource_sck_capture_handler_t setup_capture(
+    void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis,
+    sck_frame_callback_f frame_callback, void *frame_callback_ref,
+    sck_error_callback_f error_callback, void *error_callback_ref
+) {
     fbsource_sck_capture_handler_t handler = [CaptureHandler new];
-    if (![handler setupFor:ext_instance_ref captureWindow:window_params withTimeout:timeout_millis withCallback:frame_callback withCallbackReference:frame_callback_ref withErrorCallback:error_callback withErrorCallbackReference:error_callback_ref]) {
+    if (![handler          setupFor:ext_instance_ref
+                      captureWindow:window_params
+                        withTimeout:timeout_millis
+                       withCallback:frame_callback      withCallbackReference:frame_callback_ref
+                  withErrorCallback:error_callback withErrorCallbackReference:error_callback_ref
+    ]) {
         [handler release];
         return NULL;
     }

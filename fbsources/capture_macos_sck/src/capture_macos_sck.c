@@ -422,7 +422,11 @@ static int generate(void *data) {
         mtx_unlock(&instance->mutex);
 
         FBLOG_INFO(instance->ext_instance_ref, "window acquired, setting up capture");
-        instance->handler = setup_capture(instance->ext_instance_ref, window_params, FBSOURCE_SCK_SETUP_TIMEOUT_MILLIS, on_frame_received, instance, on_error, instance);
+        instance->handler = setup_capture(
+            instance->ext_instance_ref, window_params, FBSOURCE_SCK_SETUP_TIMEOUT_MILLIS,
+            on_frame_received, instance,
+            on_error, instance
+        );
         if (!instance->handler) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to setup capture handler");
 

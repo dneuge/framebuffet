@@ -64,13 +64,11 @@ typedef uint8_t fbsource_sck_state_t;
     SCStream *stream;
 };
 
--(bool)setupFor:(void*)ext_instance_ref
-       captureWindow:(window_parameters_t)window_params
-       withTimeout:(uint32_t)timeout_millis
-       withCallback:(sck_frame_callback_f)frame_callback
-       withCallbackReference:(void*)frame_callback_ref
-       withErrorCallback:(sck_error_callback_f)error_callback
-       withErrorCallbackReference:(void*)error_callback_ref;
+-(bool)         setupFor:(void*)ext_instance_ref
+           captureWindow:(window_parameters_t)window_params
+             withTimeout:(uint32_t)timeout_millis
+            withCallback:(sck_frame_callback_f)frame_callback      withCallbackReference:(void*)frame_callback_ref
+       withErrorCallback:(sck_error_callback_f)error_callback withErrorCallbackReference:(void*)error_callback_ref;
 
 -(bool)startCaptureWithTimeout:(uint32_t)timeout_millis;
 
@@ -82,12 +80,12 @@ typedef uint8_t fbsource_sck_state_t;
 
 -(void)failRecommendingAbort;
 
--(void)stream:(SCStream*)stream
+-(void)               stream:(SCStream*)stream
        didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                       ofType:(SCStreamOutputType)type;
 
--(void)stream:(SCStream*)stream
-       didStopWithError:(NSError*)error;
+-(void)               stream:(SCStream*)stream
+            didStopWithError:(NSError*)error;
 
 -(void)streamDidBecomeActive:(SCStream*)stream;
 
