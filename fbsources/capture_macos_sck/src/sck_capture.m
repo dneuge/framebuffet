@@ -13,7 +13,7 @@
 #define ABS_DIMENSION_ERROR_TOLERANCE (0.1)
 
 @implementation CaptureHandler
--(bool)setupFor:(void*)new_ext_instance_ref captureWindow:(window_parameters_t)new_window_params withTimeout:(uint32_t)timeout_millis withCallback:(sck_frame_callback_f)new_frame_callback withCallbackReference:(void*)new_frame_callback_ref {
+-(bool)setupFor:(void*)new_ext_instance_ref captureWindow:(window_parameters_t)new_window_params withTimeout:(uint32_t)timeout_millis withCallback:(sck_frame_callback_f)new_frame_callback withCallbackReference:(void*)new_frame_callback_ref withErrorCallback:(sck_error_callback_f)new_error_callback withErrorCallbackReference:(void*)new_error_callback_ref {
     // NOTE: Only to be handled through setup_capture, do not call directly! On failure, memory needs to be released
     //       through deallocation (not done by this method).
 
@@ -22,8 +22,8 @@
         return false;
     }
 
-    if (!new_frame_callback) {
-        FBLOG_WARN(new_ext_instance_ref, "setup_capture: missing required parameter frame_callback");
+    if (!new_frame_callback || !new_error_callback) {
+        FBLOG_WARN(new_ext_instance_ref, "setup_capture: missing required parameters; frame_callback=%p, error_callback=%p", new_frame_callback, new_error_callback);
         return false;
     }
 
@@ -36,6 +36,8 @@
     self->window_params = new_window_params;
     self->frame_callback = new_frame_callback;
     self->frame_callback_ref = new_frame_callback_ref;
+    self->error_callback = new_error_callback;
+    self->error_callback_ref = new_error_callback_ref;
 
     FBLOG_TRACE(self->ext_instance_ref, "setup_capture: searching window");
     self->window = findWindow(self->window_params.id, timeout_millis);
@@ -204,6 +206,11 @@
 
     id nsnull = [NSNull null];
 
+    self->frame_callback = NULL;
+    self->frame_callback_ref = NULL;
+    self->error_callback = NULL;
+    self->error_callback_ref = NULL;
+
     if (self->stream != nil && (id)self->stream != nsnull) {
         [self->stream release];
     }
@@ -237,6 +244,24 @@
 
     [super dealloc];
 }
+
+-(void)failRecommending:(sck_error_recommendation_t)recommendation {
+    const sck_error_callback_f checked_callback = self->error_callback;
+    if (!checked_callback) {
+        return;
+    }
+
+    checked_callback(self->error_callback_ref, recommendation);
+}
+
+-(void)failRecommendingReinit {
+    [self failRecommending:FBSOURCE_SCK_ERROR_RECOMMEND_REINIT];
+}
+
+-(void)failRecommendingAbort {
+    [self failRecommending:FBSOURCE_SCK_ERROR_RECOMMEND_ABORT];
+}
+
 
 -(void)stream:(SCStream*)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
     // NOTE: There seems to be only one attachment and that one is a dictionary which cannot be fully inspected, neither
@@ -306,9 +331,10 @@
     CFNumberRef scaleFactorRef = (CFNumberRef) CFDictionaryGetValue(sampleDictionary, SCStreamFrameInfoScaleFactor);
     CGFloat scaleFactor = NAN;
     if (!CFNumberGetValue(scaleFactorRef, kCFNumberCGFloatType, &scaleFactor)) {
-        // Apple's example strictly requires this value but it shouldn't be important for us so we continue regardless
-        // TODO: fail capture
         FBLOG_WARN(self->ext_instance_ref, "stream callback: received sample without scale factor");
+
+        // error is unlikely to be resolved by a restart, if this happens it is more likely an API or permission issue
+        [self failRecommendingAbort];
         return;
     }
 
@@ -359,12 +385,15 @@
     // scale is only apparent by multiplying scale factor and content scale (e.g. 2.0 * 0.5 = 1.0).
     double actualScale = scaleFactor * contentScale;
     if (IS_APPROXIMATELY(scaleFactor, 1.0, 0.005)) {
-        // TODO: fail capture (unlikely to resolve on its own)
         FBLOG_WARN(
             self->ext_instance_ref,
             "stream callback: calculated actualScale=%.3f which is out of tolerance (expected 1.0); scaleFactor=%.1f, contentScale=%.1f",
             actualScale, scaleFactor, contentScale
         );
+
+        // might be fixable by reinitializing
+        // (window size may have changed and macOS scaled to fit even if it was told not to)
+        [self failRecommendingReinit];
         return;
     }
 
@@ -376,17 +405,20 @@
     double content_offset_y = contentRect.origin.y * scaleFactor;
 
     if (elementWidth != 1 || elementHeight != 1) {
-        // TODO: fail capture (unlikely to resolve on its own)
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: invalid element dimensions, elementWidth=%ld, elementHeight=%ld",
             elementWidth, elementHeight
         );
+
+        // this doesn't happen when windows change dimensions, it is more likely some unsupported display configuration
+        // or similar, so a reinitialization is unlikely to help
+        [self failRecommendingAbort];
         return;
     }
 
     if (numPlanes > 1) {
-        // TODO: fail capture
         FBLOG_WARN(self->ext_instance_ref, "stream callback: unexpected numPlanes=%ld", numPlanes);
+        [self failRecommendingAbort]; // API or system configuration issue
         return;
     }
 
@@ -394,11 +426,11 @@
     if (pixelFormat == kCVPixelFormatType_32BGRA) {
         callback_pixel_format = FBSOURCE_SCK_PIXEL_FORMAT_32BGRA;
     } else {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: unhandled pixel format %s (0x%08x)",
             OSTYPE_STRING(pixelFormat), pixelFormat
         );
+        [self failRecommendingAbort]; // API or system configuration issue
         return;
     }
 
@@ -407,42 +439,42 @@
             self->ext_instance_ref, "stream callback: unexpected numBytesPerPixel=%ld for pixel format %s (0x%08x)",
             numBytesPerPixel, OSTYPE_STRING(pixelFormat), pixelFormat
         );
+        [self failRecommendingAbort]; // API or system configuration issue
         return;
     }
 
     size_t minBytesPerRow = bufferWidth * numBytesPerPixel;
     if (numBytesPerRow < minBytesPerRow) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: insufficient buffer dimensions, got numBytesPerRow=%ld, expected at least %ld (bufferWidth=%ld, numBytesPerPixel=%ld)",
             numBytesPerRow, minBytesPerRow, bufferWidth, numBytesPerPixel
         );
+        [self failRecommendingReinit];
         return;
     }
 
     size_t minBytesTotal = bufferHeight * numBytesPerRow;
     if (numBytesTotal < minBytesTotal) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: insufficient buffer dimensions, got numBytesTotal=%ld, expected at least %ld (bufferHeight=%ld, numBytesPerRow=%ld)",
             numBytesTotal, minBytesTotal, bufferHeight, numBytesPerRow
         );
+        [self failRecommendingReinit];
         return;
     }
 
     if (content_width < 1.0-ABS_DIMENSION_ERROR_TOLERANCE || content_height < 1.0-ABS_DIMENSION_ERROR_TOLERANCE) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: undersize content dimensions [%.4f, %.4f], contentRect.size=[%.4f, %.4f], scaleFactor=%.1f",
             content_width, content_height, contentRect.size.width, contentRect.size.height, scaleFactor
         );
+        [self failRecommendingReinit];
         return;
     }
 
     double widthError = content_width - round(content_width);
     double heightError = content_height - round(content_height);
     if (fabs(widthError) > ABS_DIMENSION_ERROR_TOLERANCE || fabs(heightError) > ABS_DIMENSION_ERROR_TOLERANCE) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref,
             "stream callback: content dimensions [%.4f, %.4f] have excessive error; contentRect.size=[%.4f, %.4f], "
@@ -450,13 +482,13 @@
             content_width, content_height, contentRect.size.width, contentRect.size.height,
             scaleFactor, widthError, heightError, ABS_DIMENSION_ERROR_TOLERANCE
         );
+        [self failRecommendingReinit]; // this may happen if windows resize
         return;
     }
 
     double xError = content_offset_x - round(content_offset_x);
     double yError = content_offset_y - round(content_offset_y);
     if (fabs(xError) > ABS_DIMENSION_ERROR_TOLERANCE || fabs(yError) > ABS_DIMENSION_ERROR_TOLERANCE) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref,
             "stream callback: content origin [%.4f, %.4f] has excessive error; contentRect.origin=[%.4f, %.4f], "
@@ -464,11 +496,11 @@
             content_offset_x, content_offset_y, contentRect.origin.x, contentRect.origin.y,
             scaleFactor, xError, yError, ABS_DIMENSION_ERROR_TOLERANCE
         );
+        [self failRecommendingReinit]; // this may happen if windows resize
         return;
     }
 
     if (content_offset_x < 0.0 || content_offset_y < 0.0) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref,
             "stream callback: negative content origin is not supported, got [%.4f, %.4f]; "
@@ -476,13 +508,13 @@
             content_offset_x, content_offset_y,
             contentRect.origin.x, contentRect.origin.y, scaleFactor
         );
+        [self failRecommendingReinit]; // reinitialization *might* help although this could also be an API issue
         return;
     }
 
     long minWidth = lround(content_offset_x) + lround(content_width);
     long minHeight = lround(content_offset_y) + lround(content_height);
     if (bufferWidth < minWidth || bufferHeight < minHeight) {
-        // TODO: fail capture
         FBLOG_WARN(
             self->ext_instance_ref, "stream callback: insufficient buffer dimensions, got "
             "minWidth=%ld (%.1f + %.1f | (%.1f + %.1f) * %.1f), bufferWidth=%ld, "
@@ -490,6 +522,7 @@
             minWidth, content_offset_x, content_width, contentRect.origin.x, contentRect.size.width, scaleFactor, bufferWidth,
             minHeight, content_offset_y, content_height, contentRect.origin.y, contentRect.size.height, scaleFactor, bufferHeight
         );
+        [self failRecommendingReinit];
         return;
     }
 
@@ -509,6 +542,7 @@
     sck_frame_callback_f checked_callback = self->frame_callback;
     if (!checked_callback) {
         FBLOG_WARN(self->ext_instance_ref, "stream callback: downstream frame callback is NULL");
+        // do not try calling the error handler; if this happens the whole object may have become invalid
         return;
     }
 
@@ -524,7 +558,7 @@
         free(msg);
     }
 
-    // FIXME: signal and handle failure
+    [self failRecommendingReinit];
 }
 
 -(void)streamDidBecomeActive:(SCStream*)stream {
@@ -554,9 +588,9 @@
 
 @end
 
-fbsource_sck_capture_handler_t setup_capture(void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis, sck_frame_callback_f frame_callback, void *frame_callback_ref) {
+fbsource_sck_capture_handler_t setup_capture(void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis, sck_frame_callback_f frame_callback, void *frame_callback_ref, sck_error_callback_f error_callback, void *error_callback_ref) {
     fbsource_sck_capture_handler_t handler = [CaptureHandler new];
-    if (![handler setupFor:ext_instance_ref captureWindow:window_params withTimeout:timeout_millis withCallback:frame_callback withCallbackReference:frame_callback_ref]) {
+    if (![handler setupFor:ext_instance_ref captureWindow:window_params withTimeout:timeout_millis withCallback:frame_callback withCallbackReference:frame_callback_ref withErrorCallback:error_callback withErrorCallbackReference:error_callback_ref]) {
         [handler release];
         return NULL;
     }

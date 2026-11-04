@@ -25,7 +25,12 @@ typedef struct {
        fbsource_sck_pixel_format_t pixel_format;
 } fbsource_sck_frame_t;
 
+typedef uint8_t sck_error_recommendation_t;
+#define FBSOURCE_SCK_ERROR_RECOMMEND_ABORT (0)
+#define FBSOURCE_SCK_ERROR_RECOMMEND_REINIT (1)
+
 typedef void(*sck_frame_callback_f)(void *ref, fbsource_sck_frame_t *frame);
+typedef void(*sck_error_callback_f)(void *ref, sck_error_recommendation_t recommendation);
 
 typedef uint8_t fbsource_sck_state_t;
 #define FBSOURCE_SCK_STATE_UNINITIALIZED (0)
@@ -42,10 +47,13 @@ typedef uint8_t fbsource_sck_state_t;
     void *ext_instance_ref;
     fbsource_sck_state_t state;
 
-    sck_frame_callback_f frame_callback;
-    void* frame_callback_ref;
+       sck_frame_callback_f frame_callback;
+       void* frame_callback_ref;
 
-    window_parameters_t window_params;
+       sck_error_callback_f error_callback;
+       void* error_callback_ref;
+
+       window_parameters_t window_params;
 
     SCWindow *window;
     SCContentFilter *contentFilter;
@@ -60,11 +68,19 @@ typedef uint8_t fbsource_sck_state_t;
        captureWindow:(window_parameters_t)window_params
        withTimeout:(uint32_t)timeout_millis
        withCallback:(sck_frame_callback_f)frame_callback
-       withCallbackReference:(void*)frame_callback_ref;
+       withCallbackReference:(void*)frame_callback_ref
+       withErrorCallback:(sck_error_callback_f)error_callback
+       withErrorCallbackReference:(void*)error_callback_ref;
 
 -(bool)startCaptureWithTimeout:(uint32_t)timeout_millis;
 
 -(bool)stopCaptureWithTimeout:(uint32_t)timeout_millis;
+
+-(void)failRecommending:(sck_error_recommendation_t)recommendation;
+
+-(void)failRecommendingReinit;
+
+-(void)failRecommendingAbort;
 
 -(void)stream:(SCStream*)stream
        didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
@@ -91,7 +107,7 @@ typedef CaptureHandler* fbsource_sck_capture_handler_t;
 typedef void* fbsource_sck_capture_handler_t;
 #endif
 
-fbsource_sck_capture_handler_t setup_capture(void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis, sck_frame_callback_f frame_callback, void *frame_callback_ref);
+fbsource_sck_capture_handler_t setup_capture(void *ext_instance_ref, window_parameters_t window_params, uint32_t timeout_millis, sck_frame_callback_f frame_callback, void *frame_callback_ref, sck_error_callback_f error_callback, void *error_callback_ref);
 bool start_capture(fbsource_sck_capture_handler_t handler, uint32_t timeout_millis);
 bool stop_capture(fbsource_sck_capture_handler_t *handler, uint32_t timeout_millis);
 

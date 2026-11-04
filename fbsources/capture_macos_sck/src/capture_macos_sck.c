@@ -302,6 +302,27 @@ static void on_frame_received(void *ref, fbsource_sck_frame_t *frame) {
     }
 }
 
+static void on_error(void *ref, sck_error_recommendation_t recommendation) {
+    if (!ref) {
+        return;
+    }
+
+    fbsource_capture_macos_sck_t *instance = ref;
+    if (instance->stop_generator) {
+        return;
+    }
+
+    FBLOG_DEBUG(instance->ext_instance_ref, "error notification: recommendation=%" PRIu8, recommendation);
+    if (recommendation == FBSOURCE_SCK_ERROR_RECOMMEND_REINIT) {
+        raise_reinit_flag(instance);
+    } else if (recommendation == FBSOURCE_SCK_ERROR_RECOMMEND_ABORT) {
+        raise_abort_flag(instance);
+    } else {
+        FBLOG_WARN(instance->ext_instance_ref, "unhandled error recommendation %" PRIu8 ", aborting", recommendation);
+        raise_abort_flag(instance);
+    }
+}
+
 static int generate(void *data) {
     fbsource_capture_macos_sck_t *instance = data;
 
@@ -401,7 +422,7 @@ static int generate(void *data) {
         mtx_unlock(&instance->mutex);
 
         FBLOG_INFO(instance->ext_instance_ref, "window acquired, setting up capture");
-        instance->handler = setup_capture(instance->ext_instance_ref, window_params, FBSOURCE_SCK_SETUP_TIMEOUT_MILLIS, on_frame_received, instance);
+        instance->handler = setup_capture(instance->ext_instance_ref, window_params, FBSOURCE_SCK_SETUP_TIMEOUT_MILLIS, on_frame_received, instance, on_error, instance);
         if (!instance->handler) {
             FBLOG_WARN(instance->ext_instance_ref, "failed to setup capture handler");
 
