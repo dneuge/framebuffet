@@ -94,7 +94,7 @@
     // TODO: make presenterOverlayPrivacyAlertSetting configurable?
     self->streamConfig.captureMicrophone = FALSE;
     self->streamConfig.captureDynamicRange = SCCaptureDynamicRangeSDR;
-    self->streamConfig.includeChildWindows = TRUE;
+    self->streamConfig.includeChildWindows = FALSE; // TODO: make configurable (TRUE may be needed by some but breaks window dimensions and thus capture; e.g. context menu in TextEdit)
     self->streamConfig.showMouseClicks = FALSE; // TODO: make configurable?
 
     FBLOG_TRACE(self->ext_instance_ref, "setup_capture: allocating stream");
