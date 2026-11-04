@@ -56,8 +56,6 @@ typedef uint8_t fbsource_sck_state_t;
     SCStream *stream;
 };
 
-// TODO: implement all callback methods
-
 -(bool)setupFor:(void*)ext_instance_ref
        captureWindow:(window_parameters_t)window_params
        withTimeout:(uint32_t)timeout_millis

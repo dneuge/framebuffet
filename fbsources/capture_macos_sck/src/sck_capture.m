@@ -74,8 +74,6 @@
     self->streamConfig.scalesToFit = FALSE;
     self->streamConfig.preservesAspectRatio = TRUE;
     self->streamConfig.pixelFormat = kCVPixelFormatType_32BGRA;
-    //self->streamConfig.pixelFormat = 'BGRA';
-    //self->streamConfig.pixelFormat = *((OSType*) (char*) "ARGB"); // FIXME: use constant
     self->streamConfig.colorSpaceName = kCGColorSpaceSRGB;
     self->streamConfig.backgroundColor = bgColorRef; // TODO: make configurable?
     self->streamConfig.showsCursor = FALSE; // TODO: make configurable?
@@ -114,7 +112,7 @@
         if (msg) {
             free(msg);
         }
-        [error release]; // FIXME: this will crash the application if we're not supposed to release the error; should we, or not?
+        [error release];
         return false;
     }
 
