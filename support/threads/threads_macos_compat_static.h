@@ -1,7 +1,8 @@
 #ifndef THREADS_MACOS_COMPAT_STATIC_H
 /**
- * C11 threads compatibility wrapper for the macOS(r) operating system
- * Copyright (c) 2024-2025 Daniel Neugebauer
+ * C11 threads compatibility wrapper for the macOS operating system
+ * Copyright (c) 2024-2026 Daniel Neugebauer
+ * https://codeberg.org/dneuge/c11-threads-compat-for-macos-operating-system
  * https://github.com/dneuge/c11-threads-compat-for-macos-operating-system
  * 
  * Released under MIT license, unless marked otherwise in the code that follows:
@@ -155,7 +156,7 @@ static int mtx_trylock(mtx_t *mutex) {
     return err ? thrd_error : thrd_success;
 }
 
-static inline bool timespec_is_greater_than(const struct timespec *a, const struct timespec *b) {
+static inline bool tmcs__timespec_is_greater_than(const struct timespec *a, const struct timespec *b) {
     if (a->tv_sec > b->tv_sec) {
         return true;
     }
@@ -212,11 +213,11 @@ static int mtx_timedlock(mtx_t *mutex, const struct timespec *time_point) {
             return thrd_error;
         }
 
-        if (timespec_is_greater_than(&now, time_point)) {
+        if (tmcs__timespec_is_greater_than(&now, time_point)) {
             return thrd_timedout;
         }
 
-        if (!timespec_is_greater_than(&now, &latest_full_sleep_start)) {
+        if (!tmcs__timespec_is_greater_than(&now, &latest_full_sleep_start)) {
             // there's enough time for at least one regular check interval to sleep for
             // this reset should usually not be needed but it's safer to restore original behaviour just in case
             // the real-time clock rolls back after we already reached the presumed last sleep cycle
@@ -267,15 +268,15 @@ typedef struct {
     thrd_start_t actual_func;
     void *actual_arg;
     int res;
-} wrapped_thread_t;
+} tmcs__wrapped_thread_t;
 
-static void* wrap_thread_func(void *arg) {
-    wrapped_thread_t *wrapped = arg;
+static void* tmcs__wrap_thread_func(void *arg) {
+    tmcs__wrapped_thread_t *wrapped = arg;
     wrapped->res = wrapped->actual_func(wrapped->actual_arg);
     return arg;
 }
 
-static void* tmcs_zmalloc(size_t size) {
+static void* tmcs__zmalloc(size_t size) {
     // prevent zero allocation requests as some malloc implementations may corrupt in that case
     if (size == 0) {
         return NULL;
@@ -289,7 +290,7 @@ static void* tmcs_zmalloc(size_t size) {
 }
 
 static int thrd_create(thrd_t *thr, thrd_start_t func, void *arg) {
-    wrapped_thread_t *wrapped = tmcs_zmalloc(sizeof(wrapped_thread_t));
+    tmcs__wrapped_thread_t *wrapped = tmcs__zmalloc(sizeof(tmcs__wrapped_thread_t));
     if (!wrapped) {
         printf("[threads_macos_compat] thrd_create out of memory?\n");
         return thrd_error;
@@ -298,7 +299,7 @@ static int thrd_create(thrd_t *thr, thrd_start_t func, void *arg) {
     wrapped->actual_func = func;
     wrapped->actual_arg = arg;
 
-    int err = pthread_create(thr, NULL, wrap_thread_func, wrapped);
+    int err = pthread_create(thr, NULL, tmcs__wrap_thread_func, wrapped);
     if (err) {
         printf("[threads_macos_compat] pthread_create error: %d %s\n", err, strerror(err));
         free(wrapped);
@@ -312,7 +313,7 @@ static int thrd_sleep(const struct timespec *duration, struct timespec *remainin
 }
 
 static int thrd_join(thrd_t thr, int *res) {
-    wrapped_thread_t *wrapped = NULL;
+    tmcs__wrapped_thread_t *wrapped = NULL;
     int err = pthread_join(thr, (void**) &wrapped);
     if (err) {
         printf("[threads_macos_compat] pthread_join error: %d %s\n", err, strerror(err));
