@@ -103,7 +103,7 @@
     [self->stream initWithFilter:self->contentFilter configuration:self->streamConfig delegate:self];
 
     FBLOG_TRACE(self->ext_instance_ref, "setup_capture: creating dispatch queue");
-    self->queue = dispatch_queue_create("framebuffet.VideoQueue", DISPATCH_QUEUE_SERIAL); // FIXME: use instance-specific name + random ID
+    self->queue = dispatch_queue_create("framebuffet.VideoQueue", DISPATCH_QUEUE_SERIAL); // TODO: should we use a dynamically generated instance-specific name + random ID? function wants const char* so it probably should not be freed
     if (self->queue == nil || self->queue == nsnull) {
         FBLOG_WARN(self->ext_instance_ref, "setup_capture: failed to create dispatch queue");
         return false;
