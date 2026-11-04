@@ -54,6 +54,17 @@ mach_timespec_t get_system_timestamp_from_now(mach_timespec_t offset);
 struct timespec get_remaining_duration_until_system_timestamp(mach_timespec_t target);
 
 /**
+ * Tests if given timespec a is greater than timespec b.
+ *
+ * Both timespecs must be positive and valid, otherwise behaviour is undefined.
+ *
+ * @param a left value
+ * @param b right value
+ * @return true if a is greater than b, false if a is less than or equal to b
+ */
+bool timespec_is_greater_than(struct timespec *a, struct timespec *b);
+
+/**
  * Checks if the given timestamp is valid and strictly positive (not zero).
  * @param timestamp timestamp to check
  * @return true if strictly positive; false if zero, negative or invalid

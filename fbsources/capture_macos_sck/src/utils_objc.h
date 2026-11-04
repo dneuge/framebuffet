@@ -15,6 +15,10 @@ typedef int (^IntSupplier)(void);
 + (bool)waitWithTimeout:(uint32_t)timeout_millis
         completionCheck:(IntSupplier)checkComplete;
 
++ (bool)waitWithTimeout:(uint32_t)timeout_millis
+            everyMillis:(uint16_t)check_interval_millis
+        completionCheck:(IntSupplier)checkComplete;
+
 + (char*)createCString:(NSString*)s;
 
 + (char*)createCString:(NSString*)s

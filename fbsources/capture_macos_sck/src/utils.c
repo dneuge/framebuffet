@@ -52,6 +52,18 @@ static bool is_valid_timestamp(struct timespec *timestamp) {
     return true;
 }
 
+bool timespec_is_greater_than(struct timespec *a, struct timespec *b) {
+    if (a->tv_sec > b->tv_sec) {
+        return true;
+    }
+
+    if (a->tv_sec < b->tv_sec) {
+        return false;
+    }
+
+    return a->tv_nsec > b->tv_nsec;
+}
+
 bool is_strictly_positive_valid_timestamp(struct timespec timestamp) {
     if (!is_valid_timestamp(&timestamp)) {
         return false;
