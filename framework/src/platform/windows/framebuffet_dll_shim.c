@@ -27,7 +27,7 @@
 // TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h src/fbutil.h | sha256sum
 
 static framebuffet_dll_shim_t _framebuffet_dll_shim = {
-    ._shim_hash = "a2efb12e785f274b1797ce9217f8940b9090a0a1b33c52721d52e4dd16c64093",
+    ._shim_hash = "10fdd7f1ac069270f72f38fab4a31bb1ca8bc902e038de10961848411e103755",
     ._shim_loaded = 0,
     0
 };
@@ -36,18 +36,28 @@ static void link_shim(framebuffet_dll_shim_t *runtime) {
     _framebuffet_dll_shim.framebuffet_publish_num_buffers = runtime->framebuffet_publish_num_buffers;
     _framebuffet_dll_shim.framebuffet_publish_update = runtime->framebuffet_publish_update;
     _framebuffet_dll_shim.framebuffet_log_va = runtime->framebuffet_log_va;
+    _framebuffet_dll_shim.framebuffet_is_log_level_enabled = runtime->framebuffet_is_log_level_enabled;
     _framebuffet_dll_shim.framebuffet_get_source_name_reference = runtime->framebuffet_get_source_name_reference;
     
     _framebuffet_dll_shim.framebuffet_get_source_instance = runtime->framebuffet_get_source_instance;
     _framebuffet_dll_shim.framebuffet_release_source_instance = runtime->framebuffet_release_source_instance;
+    _framebuffet_dll_shim.framebuffet_get_source_configuration = runtime->framebuffet_get_source_configuration;
     _framebuffet_dll_shim.framebuffet_get_num_buffers = runtime->framebuffet_get_num_buffers;
     _framebuffet_dll_shim.framebuffet_get_buffer_configuration = runtime->framebuffet_get_buffer_configuration;
     _framebuffet_dll_shim.framebuffet_copy_latest_frame = runtime->framebuffet_copy_latest_frame;
+    _framebuffet_dll_shim.framebuffet_has_update = runtime->framebuffet_has_update;
+    _framebuffet_dll_shim.framebuffet_wait_for_update = runtime->framebuffet_wait_for_update;
     _framebuffet_dll_shim.framebuffet_wait_for_update_micros = runtime->framebuffet_wait_for_update_micros;
 
+    _framebuffet_dll_shim.fbcollections_map_create = runtime->fbcollections_map_create;
     _framebuffet_dll_shim.fbcollections_map_copy_with_payloads = runtime->fbcollections_map_copy_with_payloads;
     _framebuffet_dll_shim.fbcollections_map_find_key = runtime->fbcollections_map_find_key;
+    _framebuffet_dll_shim.fbcollections_map_put = runtime->fbcollections_map_put;
+    _framebuffet_dll_shim.fbcollections_map_put_and_free_old_entry_with_payloads = runtime->fbcollections_map_put_and_free_old_entry_with_payloads;
+    _framebuffet_dll_shim.fbcollections_map_remove = runtime->fbcollections_map_remove;
+    _framebuffet_dll_shim.fbcollections_map_free_entry_and_payloads = runtime->fbcollections_map_free_entry_and_payloads;
     _framebuffet_dll_shim.fbcollections_map_free_map_and_payloads = runtime->fbcollections_map_free_map_and_payloads;
+    _framebuffet_dll_shim.fbcollections_map_tail = runtime->fbcollections_map_tail;
     
     _framebuffet_dll_shim.fbutil_set_current_thread_name_va = runtime->fbutil_set_current_thread_name_va;
 }
@@ -61,23 +71,33 @@ static void clear_shim() {
 static bool check_shim_complete(framebuffet_dll_shim_t *shim) {
     if (!shim) return false;
     
-    if (!shim->framebuffet_publish_num_buffers) return 0;
-    if (!shim->framebuffet_publish_update) return 0;
-    if (!shim->framebuffet_log_va) return 0;
-    if (!shim->framebuffet_get_source_name_reference) return 0;
+    if (!shim->framebuffet_publish_num_buffers) return false;
+    if (!shim->framebuffet_publish_update) return false;
+    if (!shim->framebuffet_log_va) return false;
+    if (!shim->framebuffet_is_log_level_enabled) return false;
+    if (!shim->framebuffet_get_source_name_reference) return false;
     
-    if (!shim->framebuffet_get_source_instance) return 0;
-    if (!shim->framebuffet_release_source_instance) return 0;
-    if (!shim->framebuffet_get_num_buffers) return 0;
-    if (!shim->framebuffet_get_buffer_configuration) return 0;
-    if (!shim->framebuffet_copy_latest_frame) return 0;
-    if (!shim->framebuffet_wait_for_update_micros) return 0;
-    
-    if (!shim->fbcollections_map_copy_with_payloads) return 0;
-    if (!shim->fbcollections_map_find_key) return 0;
-    if (!shim->fbcollections_map_free_map_and_payloads) return 0;
+    if (!shim->framebuffet_get_source_instance) return false;
+    if (!shim->framebuffet_release_source_instance) return false;
+    if (!shim->framebuffet_get_source_configuration) return false;
+    if (!shim->framebuffet_get_num_buffers) return false;
+    if (!shim->framebuffet_get_buffer_configuration) return false;
+    if (!shim->framebuffet_copy_latest_frame) return false;
+    if (!shim->framebuffet_has_update) return false;
+    if (!shim->framebuffet_wait_for_update) return false;
+    if (!shim->framebuffet_wait_for_update_micros) return false;
 
-    if (!shim->fbutil_set_current_thread_name_va) return 0;
+    if (!shim->fbcollections_map_create) return false;
+    if (!shim->fbcollections_map_copy_with_payloads) return false;
+    if (!shim->fbcollections_map_find_key) return false;
+    if (!shim->fbcollections_map_put) return false;
+    if (!shim->fbcollections_map_put_and_free_old_entry_with_payloads) return false;
+    if (!shim->fbcollections_map_remove) return false;
+    if (!shim->fbcollections_map_free_entry_and_payloads) return false;
+    if (!shim->fbcollections_map_free_map_and_payloads) return false;
+    if (!shim->fbcollections_map_tail) return false;
+
+    if (!shim->fbutil_set_current_thread_name_va) return false;
 
     return true;
 }
@@ -116,6 +136,11 @@ fberror_t _framebuffet_dll_shim_complete(framebuffet_dll_shim_t *runtime) {
     return FBERROR_NONE;
 }
 
+fbcollections_map_entry_t* fbcollections_map_create() {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.fbcollections_map_create();
+}
+
 fbcollections_map_entry_t* fbcollections_map_copy_with_payloads(fbcollections_map_entry_t *entry) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
     return _framebuffet_dll_shim.fbcollections_map_copy_with_payloads(entry);
@@ -126,9 +151,34 @@ fbcollections_map_entry_t* fbcollections_map_find_key(fbcollections_map_entry_t 
     return _framebuffet_dll_shim.fbcollections_map_find_key(entry, key, key_size);
 }
 
+int fbcollections_map_put(fbcollections_map_entry_t *entry, fbcollections_map_entry_t **old_entry, void *key, unsigned long key_size, void *value, unsigned long value_size) {
+    if (!_framebuffet_dll_shim._shim_loaded) return -1;
+    return _framebuffet_dll_shim.fbcollections_map_put(entry, old_entry, key, key_size, value, value_size);
+}
+
+int fbcollections_map_put_and_free_old_entry_with_payloads(fbcollections_map_entry_t *entry, void *key, unsigned long key_size, void *value, unsigned long value_size) {
+    if (!_framebuffet_dll_shim._shim_loaded) return -1;
+    return _framebuffet_dll_shim.fbcollections_map_put_and_free_old_entry_with_payloads(entry, key, key_size, value, value_size);
+}
+
+fbcollections_map_entry_t* fbcollections_map_remove(fbcollections_map_entry_t *entry, void *key, unsigned long key_size) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.fbcollections_map_remove(entry, key, key_size);
+}
+
+void fbcollections_map_free_entry_and_payloads(fbcollections_map_entry_t *entry) {
+    if (!_framebuffet_dll_shim._shim_loaded) return;
+    _framebuffet_dll_shim.fbcollections_map_free_entry_and_payloads(entry);
+}
+
 void fbcollections_map_free_map_and_payloads(fbcollections_map_entry_t *entry) {
     if (!_framebuffet_dll_shim._shim_loaded) return;
     _framebuffet_dll_shim.fbcollections_map_free_map_and_payloads(entry);
+}
+
+fbcollections_map_entry_t* fbcollections_map_tail(fbcollections_map_entry_t *entry) {
+    if (!_framebuffet_dll_shim._shim_loaded) return NULL;
+    return _framebuffet_dll_shim.fbcollections_map_tail(entry);
 }
 
 fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
@@ -153,9 +203,14 @@ void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...)
     va_end(args);
 }
 
+bool framebuffet_is_log_level_enabled(fbsource_module_instance_entry_t *module_instance_entry, fblog_level_t level) {
+    if (!_framebuffet_dll_shim._shim_loaded) return false;
+    return _framebuffet_dll_shim.framebuffet_is_log_level_enabled(module_instance_entry, level);
+}
+
 char* framebuffet_get_source_name_reference(void *instance_ref) {
     if (!_framebuffet_dll_shim._shim_loaded) return NULL;
-    _framebuffet_dll_shim.framebuffet_get_source_name_reference(instance_ref);
+    return _framebuffet_dll_shim.framebuffet_get_source_name_reference(instance_ref);
 }
 
 fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t* framebuffet, char *instance_name) {
@@ -168,8 +223,13 @@ fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *
     return _framebuffet_dll_shim.framebuffet_release_source_instance(source_instance);
 }
 
-int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance) {
+fberror_t framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
+    return _framebuffet_dll_shim.framebuffet_get_source_configuration(source_instance, config);
+}
+
+int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance) {
+    if (!_framebuffet_dll_shim._shim_loaded) return 0;
     return _framebuffet_dll_shim.framebuffet_get_num_buffers(source_instance);
 }
 
@@ -181,6 +241,16 @@ fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t 
 fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     if (!_framebuffet_dll_shim._shim_loaded) return FBERROR_UNSPECIFIC;
     return _framebuffet_dll_shim.framebuffet_copy_latest_frame(source_instance, destination, buffer_size, buffer_id, token);
+}
+
+bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token) {
+    if (!_framebuffet_dll_shim._shim_loaded) return false;
+    return _framebuffet_dll_shim.framebuffet_has_update(source_instance, buffer_id, last_token);
+}
+
+fberror_t framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token) {
+    if (!_framebuffet_dll_shim._shim_loaded) return false;
+    return _framebuffet_dll_shim.framebuffet_wait_for_update(source_instance, buffer_id, last_token);
 }
 
 fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds) {

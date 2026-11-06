@@ -477,10 +477,10 @@ fberror_t framebuffet_release_source_instance(fbsource_module_instance_entry_t *
 
 fberror_t framebuffet_get_source_configuration(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 
-int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance); // FIXME: Windows DLL shim returns an error code; change return value to fberror_t and use result pointer
+int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance); // FIXME: Windows DLL shim used to return an error code (now 0 on error); change return value to fberror_t and use result pointer?
 fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
 fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
-bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token); // FIXME: missing on Windows DLL shim which will need to return an error code; change return value to fberror_t and use result pointer
+bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token); // FIXME: change return value to fberror_t and use result pointer?
 fberror_t framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);
 
