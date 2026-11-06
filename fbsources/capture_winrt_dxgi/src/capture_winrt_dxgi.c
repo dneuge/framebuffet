@@ -166,65 +166,6 @@ static bool generator_reset(fbsource_capture_winrt_dxgi_t *instance, char *reaso
     return true;
 }
 
-/*
-static bool shm_reset(fbsource_capture_winrt_dxgi_t *instance, char *reason) {
-    int res;
-    bool success = true;
-    xcb_void_cookie_t void_cookie = {0};
-    
-    FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=0x%lx, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
-
-    if (success && instance->shm_attached_xserver) {
-        FBLOG_DEBUG(instance->ext_instance_ref, "detaching X server from SHM");
-        void_cookie = xcb_shm_detach_checked(instance->xcb_conn, instance->shm_info.shmseg);
-        xcb_generic_error_t *xcb_err = xcb_request_check(instance->xcb_conn, void_cookie);
-        if (!xcb_err) {
-            instance->shm_attached_xserver = false;
-        } else {
-            FBLOG_WARN(instance->ext_instance_ref, "XShmDetach failed, X11 error code %hu", xcb_err->error_code);
-            success = false;
-            free(xcb_err);
-            xcb_err = NULL;
-        }
-    }
-    
-    if (success && instance->shm_attached_self) {
-        FBLOG_DEBUG(instance->ext_instance_ref, "detaching from SHM segment");
-        res = shmdt(instance->shm_info.shmaddr);
-        if (res == 0) {
-            instance->shm_attached_self = false;
-            instance->shm_info.shmaddr = NULL;
-        } else if (res == -1) {
-            FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment failed (errno %d)", errno);
-            success = false;
-        } else {
-            FBLOG_WARN(instance->ext_instance_ref, "detach from SHM segment returned undefined result (%d), assuming failed", res);
-            success = false;
-        }
-    }
-
-    if (success) {
-        if (!instance->shm_assigned) {
-            FBLOG_DEBUG(instance->ext_instance_ref, "SHM segment has already been released");
-        } else {
-            FBLOG_DEBUG(instance->ext_instance_ref, "releasing SHM segment (late)");
-            res = shmctl((int) instance->shm_info.shmid, IPC_RMID, NULL);
-            if (res == 0) {
-                instance->shm_assigned = false;
-            } else if (res == -1) {
-                FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment failed (errno %d)", errno);
-                success = false;
-            } else {
-                FBLOG_WARN(instance->ext_instance_ref, "release of SHM segment returned undefined result (%d), assuming failed", res);
-                success = false;
-            }
-        }
-    }
-
-    return success;
-}
-*/
-
 static inline double clock2ms(clock_t c) {
     return ((double) c) / ((double) CLOCKS_PER_SEC) * 1000.0;
 }
@@ -267,7 +208,7 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
         return;
     }
 
-    FBLOG_DEBUG(instance->ext_instance_ref, "frame available");
+    FBLOG_TRACE(instance->ext_instance_ref, "frame available");
 
     clock_t benchStart = clock(); // DEBUG
 
@@ -373,7 +314,9 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
 
     clock_t benchDone = clock(); // DEBUG
 
-    FBLOG_DEBUG(instance->ext_instance_ref, "benchmark: total %5.2fms = %5.1f FPS | grab %5.2f, convert %5.2f, transfer %.2f, publish %4.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchDone-benchUnlocked));
+    if (FBLOG_IS_TRACE_ENABLED(instance->ext_instance_ref)) {
+        FBLOG_TRACE(instance->ext_instance_ref, "benchmark: total %5.2fms = %5.1f FPS | grab %5.2f, convert %5.2f, transfer %.2f, publish %4.2f", clock2ms(benchDone-benchStart), 1000.0/clock2ms(benchDone-benchStart), clock2ms(benchGotImage-benchStart), clock2ms(benchConverted-benchGotImage), clock2ms(benchUnlocked-benchConverted), clock2ms(benchDone-benchUnlocked));
+    }
 }
 
 static int generate(void *data) {
@@ -497,31 +440,6 @@ static int generate(void *data) {
 
         FBLOG_INFO(instance->ext_instance_ref, "window capture session started, buffer available");
         framebuffet_publish_num_buffers(instance->ext_instance_ref, 1);
-
-        /*
-        // compute mask and shifts for color conversion (constant for optimization)
-        if (!xcb_visualtype) {
-            FBLOG_WARN(instance->ext_instance_ref, "xcb_visualtype is unknown");
-            break;
-        }
-        const uint32_t red_mask = xcb_visualtype->red_mask;
-        const uint32_t green_mask = xcb_visualtype->green_mask;
-        const uint32_t blue_mask = xcb_visualtype->blue_mask;
-        const uint8_t red_shift = calc_shift(red_mask);
-        const uint8_t green_shift = calc_shift(green_mask);
-        const uint8_t blue_shift = calc_shift(blue_mask);
-        FBLOG_DEBUG(instance->ext_instance_ref, "visual=%u => mask/shift red 0x%08x>>%hu, green 0x%08x>>%hu, blue 0x%08x>>%hu", xcb_visualtype->visual_id, red_mask, red_shift, green_mask, green_shift, blue_mask, blue_shift);
-
-        // run sanity check on masks
-        uint32_t max_red = (red_mask >> red_shift);
-        uint32_t max_green = (green_mask >> green_shift);
-        uint32_t max_blue = (blue_mask >> blue_shift);
-        if (max_red > 255 || max_green > 255 || max_blue > 255) {
-            FBLOG_WARN(instance->ext_instance_ref, "found unexpected high number of colors per channel (%u/%u/%u) - either color mask is interleaved or HDR is active, neither is currently supported", max_red, max_green, max_blue);
-        } else if (max_red != 255 || max_green != 255 || max_blue != 255) {
-            FBLOG_WARN(instance->ext_instance_ref, "found unexpected number of colors per channel (%u/%u/%u) - display mode may not use full color range which can lead to issues", max_red, max_green, max_blue);
-        }
-        */
 
         bool mutex_locked = false;
         bool use_conditional_wait = true;
