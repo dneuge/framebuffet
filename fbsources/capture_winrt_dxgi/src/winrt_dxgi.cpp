@@ -28,11 +28,25 @@
 #define OVERSCAN_HEIGHT 7
 
 bool create_window_capture_item(void *ext_instance_ref, HWND window_handle, win_graphics_capture_item_t **capture_item) {
+    if (!capture_item) {
+        FBLOG_WARN(ext_instance_ref, "create_window_capture_item called without capture_item");
+        return false;
+    }
+
+    if (*capture_item) {
+        FBLOG_WARN(
+            ext_instance_ref,
+            "create_window_capture_item called with capture_item %p still set to %p - do we have a memleak? aborting",
+            capture_item, *capture_item
+        );
+        return false;
+    }
+
     // closely based on:
     // https://github.com/robmikh/robmikh.common/blob/main/robmikh.common/include/robmikh.common/capture.desktop.interop.h
 
     FBLOG_TRACE(ext_instance_ref, "create_window_capture_item initializing item");
-    *capture_item = new FBSourceWinRTDXGICaptureItem();
+    win_graphics_capture_item_t *out_capture_item = new FBSourceWinRTDXGICaptureItem();
     //winrt::Windows::Graphics::Capture::GraphicsCaptureItem item = {0,};
     try {
         FBLOG_TRACE(ext_instance_ref, "create_window_capture_item calling API");
@@ -40,20 +54,22 @@ bool create_window_capture_item(void *ext_instance_ref, HWND window_handle, win_
             ->CreateForWindow(
                 window_handle,
                 winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
-                winrt::put_abi((*capture_item)->item)
+                winrt::put_abi(out_capture_item->item)
             );
 
         if (res != S_OK) {
             FBLOG_CPP_WARN(ext_instance_ref, "create_window_capture_item failed with NOK HRESULT");
+            destroy_capture_item(ext_instance_ref, out_capture_item);
             return false;
         }
     } catch (winrt::hresult_error const& error) {
         FBLOG_CPP_WARN(ext_instance_ref, "create_window_capture_item failed with WinRT HRESULT exception");
+        destroy_capture_item(ext_instance_ref, out_capture_item);
         return false;
     }
 
-    //FBLOG_TRACE(ext_instance_ref, "create_window_capture_item setting output");
-    //*capture_item = &item;
+    FBLOG_TRACE(ext_instance_ref, "create_window_capture_item setting output");
+    *capture_item = out_capture_item;
     FBLOG_TRACE(ext_instance_ref, "create_window_capture_item done");
     return true;
 }
