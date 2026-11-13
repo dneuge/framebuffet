@@ -123,6 +123,7 @@ static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t l
     framebuffet->log_receiver(level, buffer);
 }
 
+__attribute__((__format__ (__printf__, 3, 4)))
 static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t level, char *format, ...) {
     // used to log within the framework itself
 
@@ -1083,7 +1084,7 @@ fberror_t framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsourc
         err = registration->module->_destroy(data);
         data = NULL;
         if (err != FBERROR_NONE) {
-            FBLOG_ERROR("source \"%s\" failed deconstruction with %d", err);
+            FBLOG_ERROR("source \"%s\" failed deconstruction with %d", instance_name, err);
             free(key);
             return FBERROR_UNSPECIFIC;
         }
@@ -1381,7 +1382,7 @@ fberror_t framebuffet_destroy_unused_source_instances(framebuffet_t *framebuffet
                 FBLOG_DEBUG("unused instance \"%s\" has been successfully destroyed, continuing", instance_name);
                 *num_destroyed = (*num_destroyed) + 1;
             } else {
-                FBLOG_WARN("unused instance \"%s\" could not be destroyed (error: %d), aborting", err);
+                FBLOG_WARN("unused instance \"%s\" could not be destroyed (error: %d), aborting", instance_name, err);
                 abort = true;
             }
             
