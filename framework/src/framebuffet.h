@@ -117,33 +117,33 @@ typedef uint8_t fberror_t;
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_ERROR)
-#define FBLOG_ERROR(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_ERROR(ref, format, ...) framebuffet_log(ref, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_ERROR(ref, format, ...) ;
+#define FBLOG_ERROR(ref, format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_WARN)
-#define FBLOG_WARN(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_WARN(ref, format, ...) framebuffet_log(ref, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_WARN(ref, format, ...) ;
+#define FBLOG_WARN(ref, format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_INFO)
-#define FBLOG_INFO(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_INFO(ref, format, ...) framebuffet_log(ref, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_INFO(ref, format, ...) ;
+#define FBLOG_INFO(ref, format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_DEBUG)
-#define FBLOG_DEBUG(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_DEBUG(ref, format, ...) framebuffet_log(ref, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_DEBUG(ref, format, ...) ;
+#define FBLOG_DEBUG(ref, format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_TRACE)
-#define FBLOG_TRACE(ref, format, ...) ;framebuffet_log(ref, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_TRACE(ref, format, ...) framebuffet_log(ref, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_TRACE(ref, format, ...) ;
+#define FBLOG_TRACE(ref, format, ...)
 #endif
 
 typedef uint8_t fblog_level_t;

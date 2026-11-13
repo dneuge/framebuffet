@@ -18,33 +18,33 @@
 #undef FBLOG_TRACE
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_ERROR)
-#define FBLOG_ERROR(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_ERROR(format, ...) framebuffet_log_framework(framebuffet, FBLOG_LEVEL_ERROR, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_ERROR(format, ...) ;
+#define FBLOG_ERROR(format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_WARN)
-#define FBLOG_WARN(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_WARN(format, ...) framebuffet_log_framework(framebuffet, FBLOG_LEVEL_WARN, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_WARN(format, ...) ;
+#define FBLOG_WARN(format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_INFO)
-#define FBLOG_INFO(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_INFO(format, ...) framebuffet_log_framework(framebuffet, FBLOG_LEVEL_INFO, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_INFO(format, ...) ;
+#define FBLOG_INFO(format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_DEBUG)
-#define FBLOG_DEBUG(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_DEBUG(format, ...) framebuffet_log_framework(framebuffet, FBLOG_LEVEL_DEBUG, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_DEBUG(format, ...) ;
+#define FBLOG_DEBUG(format, ...)
 #endif
 
 #if (FBLOG_COMPILED_MIN_LOG_LEVEL <= FBLOG_LEVEL_TRACE)
-#define FBLOG_TRACE(format, ...) ;framebuffet_log_framework(framebuffet, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__);
+#define FBLOG_TRACE(format, ...) framebuffet_log_framework(framebuffet, FBLOG_LEVEL_TRACE, format __VA_OPT__(,) __VA_ARGS__)
 #else
-#define FBLOG_TRACE(format, ...) ;
+#define FBLOG_TRACE(format, ...)
 #endif
 
 #define FBLOG_DEFAULT_MIN_LOG_LEVEL FBLOG_LEVEL_INFO
