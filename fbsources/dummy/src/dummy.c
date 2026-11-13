@@ -117,6 +117,8 @@ static int generate(void *data) {
         // aim for ~30FPS
         thrd_sleep(&(struct timespec){.tv_nsec=30000000}, NULL); 
     }
+
+    return 0; // result value is not used
 }
 
 static fberror_t dummy_create(framebuffet_t *framebuffet, void *instance_ref, void **data) {
@@ -149,8 +151,7 @@ static fberror_t stop_generator_thread(fbsource_dummy_t *instance) {
     }
   
     instance->stop_generator = true;
-    int thread_res;
-    if (thrd_join(instance->generator_thread, &thread_res) != thrd_success) {
+    if (thrd_join(instance->generator_thread, NULL) != thrd_success) {
         // TODO: what else can be done if joining the thread fails?
         out_error = FBERROR_UNSPECIFIC;
     }

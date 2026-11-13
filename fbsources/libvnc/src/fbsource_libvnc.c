@@ -504,6 +504,8 @@ static int client_loop(void *data) {
     destroy_client(client);
     
     instance->actual_connection_state = VNC_STATE_TERMINATED;
+
+    return 0; // result value is not used
 }
 
 static void rfb_log(fblog_level_t level, const char *format, va_list args) {
@@ -664,8 +666,7 @@ static fberror_t fblibvnc_destroy(void *data) {
     }
 
     set_wanted_connection_state(instance, VNC_STATE_TERMINATED);
-    int thread_res;
-    if (thrd_join(instance->client_thread, &thread_res) != thrd_success) {
+    if (thrd_join(instance->client_thread, NULL) != thrd_success) {
         // TODO: what can be done if joining the thread fails?
         out_error = FBERROR_UNSPECIFIC;
     }
