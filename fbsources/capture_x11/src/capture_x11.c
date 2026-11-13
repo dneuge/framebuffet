@@ -6,6 +6,7 @@
 #include <threads.h>
 
 #include <errno.h>
+#include <inttypes.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
 #include <sys/shm.h>
@@ -27,6 +28,9 @@
 #define WINDOW_NAME_MAX_LENGTH_IN_NUM_QUADS (1024 / 4) /* must be factor to 4, see xcb_get_property documentation */
 
 #define X_BYTES_PER_PIXEL (4) /* API always uses 32 bits per pixel; this does not seem to be flexible */
+
+/// loads xcb_sync_int64_t to memory
+#define LOAD_XCB_SYNC_INT64(x) (((int64_t) (x).hi << 32) | (x).lo)
 
 /* Useful resources for de-mystifying XCB:
  * https://www.x.org/releases/X11R7.6/doc/libxcb/tutorial/index.html
@@ -241,7 +245,7 @@ static bool shm_reset(fbsource_capture_x11_t *instance, char *reason) {
     bool success = true;
     xcb_void_cookie_t void_cookie = {0};
     
-    FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=0x%lx, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
+    FBLOG_DEBUG(instance->ext_instance_ref, "resetting SHM for %s, shmaddr=%p, shmid=%d", reason, instance->shm_info.shmaddr, instance->shm_info.shmid);
 
     if (success && instance->shm_attached_xserver) {
         FBLOG_DEBUG(instance->ext_instance_ref, "detaching X server from SHM");
@@ -880,7 +884,7 @@ static int generate(void *data) {
         while (!instance->stop_generator) {
             FBLOG_TRACE(instance->ext_instance_ref, "searching window");
             if (find_window(instance, root_window, &instance->window, instance->window_search_name_exact)) {
-                FBLOG_DEBUG(instance->ext_instance_ref, "window found: 0x%lx", instance->window);
+                FBLOG_DEBUG(instance->ext_instance_ref, "window found: 0x%" PRIx32, instance->window);
                 success = true;
 
                 if (geom) {
@@ -893,22 +897,22 @@ static int generate(void *data) {
                 if (geom && !xcb_err) {
                     // check window attributes
                     if (geom->depth != 24) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%lx", geom->depth, instance->window);
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported bit depth %d for window 0x%" PRIx32, geom->depth, instance->window);
                         success = false;
                     }
 
                     if (geom->width < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%lx", geom->width, instance->window);
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported width, got %d for window 0x%" PRIx32, geom->width, instance->window);
                         success = false;
                     }
 
                     if (geom->height < 1) {
-                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%lx", geom->height, instance->window);
+                        FBLOG_WARN(instance->ext_instance_ref, "unsupported height, got %d for window 0x%" PRIx32, geom->height, instance->window);
                         success = false;
                     }
                 }
                 if (xcb_err) {
-                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, X11 error code %hu, geom=%p", instance->window, xcb_err->error_code, geom);
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%" PRIx32 ", X11 error code %hu, geom=%p", instance->window, xcb_err->error_code, geom);
                     success = false;
                     free(xcb_err);
                     xcb_err = NULL;
@@ -919,7 +923,7 @@ static int generate(void *data) {
                         geom = NULL;
                     }
                 } else if (!geom) {
-                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%lx, no X11 error code, geom=%p", instance->window, geom);
+                    FBLOG_WARN(instance->ext_instance_ref, "xcb_get_geometry failed for window 0x%" PRIx32 ", no X11 error code, geom=%p", instance->window, geom);
                     success = false;
                 }
             }
@@ -1411,7 +1415,7 @@ static int generate(void *data) {
                     }
                 } else if (got_sync_event_base && event_type == sync_event_alarm_notify) {
                     xcb_sync_alarm_notify_event_t *e = (xcb_sync_alarm_notify_event_t*) event;
-                    FBLOG_TRACE(instance->ext_instance_ref, "Alarm notification received: alarm_value=%lld, counter_value=%lld, state=%hu, timestamp=%u", e->alarm_value, e->counter_value, e->state, e->timestamp);
+                    FBLOG_TRACE(instance->ext_instance_ref, "Alarm notification received: alarm_value=%" PRIi64 ", counter_value=%" PRIi64 ", state=%hu, timestamp=%u", LOAD_XCB_SYNC_INT64(e->alarm_value), LOAD_XCB_SYNC_INT64(e->counter_value), e->state, e->timestamp);
                 } else {
                     FBLOG_DEBUG(instance->ext_instance_ref, "unhandled event type: 0x%02x (%hu)", event->response_type, event->response_type);
                 }
