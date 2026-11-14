@@ -464,7 +464,7 @@ static int generate(void *data) {
                 thrd_sleep(&active_check_sleep, NULL);
                 FBLOG_TRACE(instance->ext_instance_ref, "generator thread waking up for active check (conditional wait is disabled)");
             } else {
-                const struct timespec wakeup_time = {0,};
+                struct timespec wakeup_time = {0,};
                 if (!set_now_plus_seconds(&wakeup_time, CONDITIONAL_WAKEUP_INTERVAL_SECONDS)) {
                     FBLOG_WARN(instance->ext_instance_ref, "failed to compute wakeup timestamp for conditional wait loop, falling back to active checks");
                     use_conditional_wait = false;
