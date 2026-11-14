@@ -1479,7 +1479,7 @@ fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t 
     return source_instance->module->module->get_buffer_configuration(source_instance->data, buffer_id, buffer_config);
 }
 
-fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t* source_instance, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     return source_instance->module->module->copy_latest_frame(source_instance->data, destination, buffer_size, buffer_id, token);
 }
 

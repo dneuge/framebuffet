@@ -746,7 +746,7 @@ static fberror_t capture_macos_sck_get_buffer_configuration(void *data, int buff
     return buffer_config->size > 0 ? FBERROR_NONE : FBERROR_NO_SUCH_BUFFER;
 }
 
-static fberror_t capture_macos_sck_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t capture_macos_sck_copy_latest_frame(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_capture_macos_sck_t *instance = data;
     fberror_t out_error = FBERROR_NONE;
   

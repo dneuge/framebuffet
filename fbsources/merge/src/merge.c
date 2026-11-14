@@ -96,7 +96,7 @@ typedef struct {
     bool flip_y;
     fbsource_merge_color_t base_color;
 
-    unsigned char *buffers[2];
+    uint8_t *buffers[2];
     unsigned long buffer_size;
 } fbsource_merge_t;
 
@@ -1414,7 +1414,7 @@ static fberror_t merge_get_buffer_configuration(void *data, int buffer_id, fbsou
     return FBERROR_NONE;
 }
 
-static fberror_t merge_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t merge_copy_latest_frame(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_merge_t *instance = data;
     fberror_t out_error = FBERROR_NONE;
 
@@ -1426,7 +1426,7 @@ static fberror_t merge_copy_latest_frame(void *data, unsigned char *destination,
         return FBERROR_UNSPECIFIC;
     }
 
-    unsigned char *buffer = instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID];
+    uint8_t *buffer = instance->buffers[FBSOURCE_MERGE_COMPLETE_BUFFER_ID];
     if (!buffer) {
         out_error = FBERROR_NO_FRAME;
     } else if (instance->buffer_size <= 0) {

@@ -21,7 +21,7 @@ typedef fberror_t (*framebuffet_release_source_instance_f)(fbsource_module_insta
 typedef fberror_t (*framebuffet_get_source_configuration_f)(fbsource_module_instance_entry_t *source_instance, fbcollections_map_entry_t **config);
 typedef int (*framebuffet_get_num_buffers_f)(fbsource_module_instance_entry_t *source_instance);
 typedef fberror_t (*framebuffet_get_buffer_configuration_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
-typedef fberror_t (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+typedef fberror_t (*framebuffet_copy_latest_frame_f)(fbsource_module_instance_entry_t *source_instance, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 typedef bool (*framebuffet_has_update_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 typedef fberror_t (*framebuffet_wait_for_update_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 typedef fberror_t (*framebuffet_wait_for_update_micros_f)(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);

@@ -305,7 +305,7 @@ static fberror_t dummy_get_buffer_configuration(void *data, int buffer_id, fbsou
     return FBERROR_NONE;
 }
 
-static fberror_t dummy_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t dummy_copy_latest_frame(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_dummy_t *instance = data;
     fberror_t out_error = FBERROR_NONE;
   

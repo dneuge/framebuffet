@@ -766,7 +766,7 @@ static fberror_t capture_winrt_dxgi_get_buffer_configuration(void *data, int buf
     return buffer_config->size > 0 ? FBERROR_NONE : FBERROR_NO_SUCH_BUFFER;
 }
 
-static fberror_t capture_winrt_dxgi_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t capture_winrt_dxgi_copy_latest_frame(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_capture_winrt_dxgi_t *instance = data;
     fberror_t out_error = FBERROR_NONE;
   

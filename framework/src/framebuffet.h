@@ -297,7 +297,7 @@ typedef fberror_t (*fbsource_get_buffer_config_f)(void *data, int buffer_id, fbs
  * @param token can be used to perform a light-weight check if a new frame is available before invoking this function
  * @return error code, see FBERROR defines
  */
-typedef fberror_t (*fbsource_copy_latest_frame_f)(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+typedef fberror_t (*fbsource_copy_latest_frame_f)(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 
 /**
  * Checks if an updated frame is available.
@@ -479,7 +479,7 @@ fberror_t framebuffet_get_source_configuration(fbsource_module_instance_entry_t 
 
 int framebuffet_get_num_buffers(fbsource_module_instance_entry_t *source_instance); // FIXME: Windows DLL shim used to return an error code (now 0 on error); change return value to fberror_t and use result pointer?
 fberror_t framebuffet_get_buffer_configuration(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_buffer_config_t *buffer_config);
-fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
+fberror_t framebuffet_copy_latest_frame(fbsource_module_instance_entry_t *source_instance, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token);
 bool framebuffet_has_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token); // FIXME: change return value to fberror_t and use result pointer?
 fberror_t framebuffet_wait_for_update(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token);
 fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *source_instance, int buffer_id, fbsource_token_t last_token, uint32_t microseconds);

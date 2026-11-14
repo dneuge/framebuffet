@@ -799,7 +799,7 @@ static fberror_t fblibvnc_get_buffer_configuration(void *data, int buffer_id, fb
     return FBERROR_NONE;
 }
 
-static fberror_t fblibvnc_copy_latest_frame(void *data, unsigned char *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
+static fberror_t fblibvnc_copy_latest_frame(void *data, void *destination, unsigned long buffer_size, int buffer_id, fbsource_token_t *token) {
     fbsource_libvnc_t *instance = data;
     fberror_t out_error = FBERROR_NONE;
   
