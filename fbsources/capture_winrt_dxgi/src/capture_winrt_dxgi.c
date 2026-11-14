@@ -170,6 +170,7 @@ static inline double clock2ms(clock_t c) {
     return ((double) c) / ((double) CLOCKS_PER_SEC) * 1000.0;
 }
 
+/*
 static uint8_t calc_shift(uint32_t mask) {
     if (!mask) {
         return 0;
@@ -183,6 +184,7 @@ static uint8_t calc_shift(uint32_t mask) {
 
     return shift;
 }
+*/
 
 static inline void raise_reinit_flag(fbsource_capture_winrt_dxgi_t *instance) {
     instance->want_reinit = true;
@@ -331,7 +333,6 @@ static int generate(void *data) {
     fbutil_set_current_thread_name("FBCapWinRTDXGI/%s", framebuffet_get_source_name_reference(instance->ext_instance_ref));
 
     window_dimensions_t window_dimensions = {0,};
-    int i = 0;
 
     // outer loop is used to reinitialize on source reconfiguration
     HWND window_handle = {0,};
