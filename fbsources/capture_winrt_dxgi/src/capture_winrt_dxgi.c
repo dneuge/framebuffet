@@ -253,14 +253,14 @@ static void capture_winrt_dxgi_on_frame_arrived(void *ref, win_capture_frame_poo
         return;
     }
     if (frame_info.bytes_per_pixel != 4) {
-        FBLOG_WARN(instance->ext_instance_ref, "unsupported number of bytes per pixel, need 4 bytes (32 bit), got %u (%u bit)", frame_info.bytes_per_pixel, frame_info.bytes_per_pixel*8);
+        FBLOG_WARN(instance->ext_instance_ref, "unsupported number of bytes per pixel, need 4 bytes (32 bit), got %zu (%zu bit)", frame_info.bytes_per_pixel, frame_info.bytes_per_pixel*8);
         raise_abort_flag(instance);
         return;
     }
     clock_t benchGotImage = clock(); // DEBUG
 
     if (frame_info.num_bytes_per_row % frame_info.bytes_per_pixel != 0) {
-        FBLOG_WARN(instance->ext_instance_ref, "number of bytes per row is not aligned with bytes per pixel: num_bytes_per_row=%u, bytes_per_pixel=%u", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel);
+        FBLOG_WARN(instance->ext_instance_ref, "number of bytes per row is not aligned with bytes per pixel: num_bytes_per_row=%zu, bytes_per_pixel=%zu", frame_info.num_bytes_per_row, frame_info.bytes_per_pixel);
         raise_reinit_flag(instance);
         return;
     }

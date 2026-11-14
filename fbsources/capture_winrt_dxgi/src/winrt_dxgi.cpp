@@ -261,7 +261,7 @@ bool copy_dxgi_frame(void *ext_instance_ref, win_capture_frame_pool_t frame_pool
     if (image_size < 0) {
         FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame calculated negative image size, RowPitch=%d, Height=%d", mapped.RowPitch, desc.Height);
     } else if (image_size > buffer_size) {
-        FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame got buffer of insufficient size; needed %z, got %z", image_size, buffer_size);
+        FBLOG_CPP_WARN(ext_instance_ref, "copy_dxgi_frame got buffer of insufficient size; needed %lld, got %zu", image_size, buffer_size);
     } else {
         memcpy(buffer, mapped.pData, image_size);
         success = true;

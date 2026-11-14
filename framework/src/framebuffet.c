@@ -234,7 +234,7 @@ static char* read_file_as_string(framebuffet_t* framebuffet, char *file_path) {
     }
 
     if (remaining != 0) {
-        FBLOG_WARN("file could not be read completely (remaining: %ld), aborting: \"%s\"", remaining, file_path);
+        FBLOG_WARN("file could not be read completely (remaining: %zu), aborting: \"%s\"", remaining, file_path);
         free(buffer);
         buffer = NULL;
     }
@@ -592,7 +592,7 @@ fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers) {
     }
 
     size_t new_size = sizeof(fbsource_module_instance_frame_update_t[num_buffers]);
-    FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": new number of buffers is %d, new record size should be %lu", instance->instance_name, num_buffers, new_size);
+    FBLOG_TRACE("framebuffet_publish_num_buffers for \"%s\": new number of buffers is %d, new record size should be %zu", instance->instance_name, num_buffers, new_size);
     
     if (num_buffers == 0) {
         // all buffers are gone
@@ -1077,7 +1077,7 @@ fberror_t framebuffet_create_source_instance(framebuffet_t* framebuffet, fbsourc
     instance->num_users = 1; // whoever created the source instance becomes the first user
 
     // register to known sources
-    FBLOG_TRACE("recording source \"%s\", size=%ld", key, strlen(key)+1);
+    FBLOG_TRACE("recording source \"%s\", size=%zu", key, strlen(key)+1);
     if (fbcollections_map_put(framebuffet->sources, &existing_source_entry, key, strlen(key)+1, instance, sizeof(fbsource_module_instance_entry_t)) < 0) {
         mtx_unlock(&framebuffet->mutex);
         FBLOG_WARN("source \"%s\" failed to register", instance_name);
@@ -1416,7 +1416,7 @@ fbsource_module_instance_entry_t* framebuffet_get_source_instance(framebuffet_t*
     fbsource_module_instance_entry_t *instance = NULL;
     
     size_t instance_name_size = strlen(instance_name) + 1;
-    FBLOG_TRACE("framebuffet_get_source_instance instance_name=\"%s\", size=%lu", instance_name, instance_name_size);
+    FBLOG_TRACE("framebuffet_get_source_instance instance_name=\"%s\", size=%zu", instance_name, instance_name_size);
 
     if (framebuffet->destruction_pending) {
         FBLOG_WARN("framework is pending destruction; sources cannot be leased any more (early check)");

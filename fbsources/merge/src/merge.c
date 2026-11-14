@@ -1149,7 +1149,7 @@ static fberror_t merge_configure_module(void *data, fbcollections_map_entry_t *c
     if (out_error == FBERROR_NONE) {
         instance->areas = malloc(areas_size);
         if (!instance->areas) {
-            FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %ld bytes for areas array", areas_size);
+            FBLOG_WARN(instance->ext_instance_ref, "failed to allocate %zu bytes for areas array", areas_size);
             out_error = FBERROR_MEMORY_ALLOCATION;
         }
     }
