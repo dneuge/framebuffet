@@ -8,8 +8,8 @@
 // plugin API from framebuffet.h
 typedef fberror_t (*framebuffet_publish_num_buffers_f)(void *instance_ref, int num_buffers);
 typedef fberror_t (*framebuffet_publish_update_f)(void *instance_ref, int buffer_id, fbsource_token_t token);
-// intentionally omitted and reimplemented below: void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
-typedef void (*framebuffet_log_va_f)(void *instance_ref, fblog_level_t level, char *format, va_list args);
+// intentionally omitted and reimplemented below: void framebuffet_log(void *instance_ref, fblog_level_t level, const char *format, ...);
+typedef void (*framebuffet_log_va_f)(void *instance_ref, fblog_level_t level, const char *format, va_list args);
 typedef bool (*framebuffet_is_log_level_enabled_f)(fbsource_module_instance_entry_t *module_instance_entry, fblog_level_t level);
 typedef char* (*framebuffet_get_source_name_reference_f)(void *instance_ref);
 
@@ -38,8 +38,8 @@ typedef void (*fbcollections_map_free_map_and_payloads_f)(fbcollections_map_entr
 typedef fbcollections_map_entry_t* (*fbcollections_map_tail_f)(fbcollections_map_entry_t *entry);
 
 // from fbutil.h
-// intentionally omitted and reimplemented below: void fbutil_set_current_thread_name(char *format, ...);
-typedef void (*fbutil_set_current_thread_name_va_f)(char *format, va_list args);
+// intentionally omitted and reimplemented below: void fbutil_set_current_thread_name(const char *format, ...);
+typedef void (*fbutil_set_current_thread_name_va_f)(const char *format, va_list args);
 
 typedef struct {
     char _shim_hash[FRAMEBUFFET_DLL_SHIM_HASH_LENGTH];

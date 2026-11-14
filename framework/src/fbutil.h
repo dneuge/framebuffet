@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-void fbutil_set_current_thread_name(char *format, ...);
-void fbutil_set_current_thread_name_va(char *format, va_list args);
+void fbutil_set_current_thread_name(const char *format, ...);
+void fbutil_set_current_thread_name_va(const char *format, va_list args);
 
 #ifdef __cplusplus
 }

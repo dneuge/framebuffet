@@ -27,7 +27,7 @@
 // TODO: auto-update shim hash; currently: cat src/fbcollections.h src/framebuffet.h src/fbutil.h | sha256sum
 
 static framebuffet_dll_shim_t _framebuffet_dll_shim = {
-    ._shim_hash = "10fdd7f1ac069270f72f38fab4a31bb1ca8bc902e038de10961848411e103755",
+    ._shim_hash = "31079cd3f32db0d1f6f2a5cf45549530dcf8bcb77a8a29c74020cbb6350a6936",
     ._shim_loaded = 0,
     0
 };
@@ -191,12 +191,12 @@ fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource
     return _framebuffet_dll_shim.framebuffet_publish_update(instance_ref, buffer_id, token);
 }
 
-void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args) {
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, const char *format, va_list args) {
     if (!_framebuffet_dll_shim._shim_loaded) return;
     _framebuffet_dll_shim.framebuffet_log_va(instance_ref, level, format, args);
 }
 
-void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+void framebuffet_log(void *instance_ref, fblog_level_t level, const char *format, ...) {
     va_list args;
     va_start(args, format);
     framebuffet_log_va(instance_ref, level, format, args);
@@ -258,12 +258,12 @@ fberror_t framebuffet_wait_for_update_micros(fbsource_module_instance_entry_t *s
     return _framebuffet_dll_shim.framebuffet_wait_for_update_micros(source_instance, buffer_id, last_token, microseconds);
 }
 
-void fbutil_set_current_thread_name_va(char *format, va_list args) {
+void fbutil_set_current_thread_name_va(const char *format, va_list args) {
     if (!_framebuffet_dll_shim._shim_loaded) return;
      _framebuffet_dll_shim.fbutil_set_current_thread_name_va(format, args);
 }
 
-void fbutil_set_current_thread_name(char *format, ...) {
+void fbutil_set_current_thread_name(const char *format, ...) {
     va_list args;
     va_start(args, format);
     fbutil_set_current_thread_name_va(format, args);

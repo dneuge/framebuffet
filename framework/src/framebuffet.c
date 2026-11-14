@@ -109,7 +109,7 @@ static char* copy_string_format_safe(char *s) {
 }
 
 __attribute__((__format__ (__printf__, 3, 0)))
-static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, char *format, va_list args) {
+static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t level, const char *format, va_list args) {
     // we need to have a log receiver and the log level has to be runtime-enabled to continue
     if (!framebuffet->log_receiver || framebuffet->minimum_log_level > level) {
         return;
@@ -124,7 +124,7 @@ static void framebuffet_log_internal(framebuffet_t *framebuffet, fblog_level_t l
 }
 
 __attribute__((__format__ (__printf__, 3, 4)))
-static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t level, char *format, ...) {
+static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t level, const char *format, ...) {
     // used to log within the framework itself
 
     va_list args;
@@ -133,7 +133,7 @@ static void framebuffet_log_framework(framebuffet_t *framebuffet, fblog_level_t 
     va_end(args);
 }
 
-void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args) {
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, const char *format, va_list args) {
     fbsource_module_instance_entry_t *module_instance_entry = instance_ref;
     if (!module_instance_entry) {
         return;
@@ -169,7 +169,7 @@ void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, v
     free(internal_format);
 }
 
-void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...) {
+void framebuffet_log(void *instance_ref, fblog_level_t level, const char *format, ...) {
     va_list args;
     va_start(args, format);
     framebuffet_log_va(instance_ref, level, format, args);

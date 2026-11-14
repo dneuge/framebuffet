@@ -433,9 +433,9 @@ fberror_t framebuffet_publish_num_buffers(void *instance_ref, int num_buffers);
 fberror_t framebuffet_publish_update(void *instance_ref, int buffer_id, fbsource_token_t token);
 
 __attribute__((__format__ (__printf__, 3, 4)))
-void framebuffet_log(void *instance_ref, fblog_level_t level, char *format, ...);
+void framebuffet_log(void *instance_ref, fblog_level_t level, const char *format, ...);
 __attribute__((__format__ (__printf__, 3, 0)))
-void framebuffet_log_va(void *instance_ref, fblog_level_t level, char *format, va_list args);
+void framebuffet_log_va(void *instance_ref, fblog_level_t level, const char *format, va_list args);
 
 bool framebuffet_is_log_level_enabled(fbsource_module_instance_entry_t *module_instance_entry, fblog_level_t level);
 
