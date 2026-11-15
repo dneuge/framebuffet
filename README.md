@@ -36,6 +36,76 @@ The following modules are included with the current version of Frame Buffet:
 
 An additional screen capture module for the macOS® operating system is expected to be added H2/2026. A screen capture module for Wayland will eventually become necessary as well but has lower priority as [the X11 module](fbsources/capture_x11) can be used (with some reliability issues) in the mean-time.
 
+### Framework integration
+
+You have multiple options to integrate and use Frame Buffet in your own application. The following artifacts are available from `framework/release/lib` upon compilation:
+
+|                                                   | Linux                      | Windows (MSVC, recommended)  | Windows (MinGW, not recommended)  | the macOS operating system        |
+|---------------------------------------------------|----------------------------|------------------------------|-----------------------------------|-----------------------------------|
+| dynamically loadable module, dynamic dependencies | `libframebuffet.so`        | `framebuffet.dll`            | `framebuffet.dll`                 | `libframebuffet.dylib`            |
+| ... import bindings\*                             | n/a                        | `framebuffet.lib`            | `libframebuffet.dll.a`            | n/a                               |
+| dynamically loadable module, static dependencies  | `libframebuffet_static.so` | `framebuffet_static_lib.dll` | `framebuffet_static_lib.dll`      | `libframebuffet_static_lib.dylib` |
+| ... import bindings\*                             | n/a                        | `framebuffet_static_lib.lib` | `libframebuffet_static_lib.dll.a` | n/a                               |
+| static library\*\*                                | `libframebuffet.a`         | `framebuffet_static.lib`     | `libframebuffet.a`                | `libframebuffet.a`                |
+| source module DLL shim\*\*\*                      | n/a                        | `framebuffet_dll_shim.lib`   | `libframebuffet_dll_shim.a`       | n/a                               |
+
+\*) Windows compilation requires import bindings to link applications to DLLs. However, only the DLL is required when loading the module via the framework (no .lib required).\
+\*\*) used to statically link the module into downstream projects\
+\*\*\*) needed when building a dynamically loadable source module on Windows (see below)
+
+Note that there are two variants of **dynamically loadable modules**:
+
+- using dynamic dependencies requires additional modules from `lib/_build` to be shipped alongside Frame Buffet
+- the static dependency artifact already includes all framework dependencies that are not commonly provided by the operating system (framework can be loaded without extra artifacts from `lib/_build`)
+
+The **static library** is intended to statically (inseparably) integrate the framework to its host. Any framework dependencies need to be linked as well (probably statically), as available from `lib/_build`.
+
+When developing a **source module**, Windows compilation of dynamically loadable modules requires static linking of the **DLL shim**. The shim allows the framework to inject references to its functions to modules to make them callable from the source module, essentially reverse-linking upstream framework functions from downstream. This is not necessary on \*NIX operating systems as all upstream functions are automatically available to downstream modules.
+
+#### Dependencies
+
+In addition to a C standard library, Frame Buffet's [framework](framework) depends on the following libraries whose artifacts from `lib/_build` must be provided/linked unless the "static" dynamically loadable module is being used: (see [`fetch-libs.sh`](fetch-libs.sh) for versions/download sources)
+
+- [cJSON](https://github.com/DaveGamble/cJSON) - note that the static Windows artifact compiled by MSVC is `cJSON.obj`, not `cjson.lib` (which is the import binding for `cjson.dll`)
+- a patched extract of [Mesa's C11 adapter](https://gitlab.freedesktop.org/mesa/mesa/-/tree/c36706142be9828271183104db0cbcd243b9ded1/src/c11) compiled to `libmesa_c11`, preferably statically linked - only required if compiled for Windows without native C11 threads support (e.g. MinGW, not needed if compiled using MSVC)
+- POSIX threads need to be linked on Linux if available (to supplement C11 threads) and are *strictly required* when targeting the macOS operating system due to missing C11 threads support on that platform
+
+C11 thread workarounds require may require define `NEED_C11_THREADS_WRAPPER` to be set for activation, in addition to linking the required libraries. Example for CMake:
+
+```cmake
+# check if C11 compatibility wrappers are needed for threads.h and subsequently time.h
+CHECK_INCLUDE_FILE(threads.h HAVE_C11_THREADS)
+IF(NOT HAVE_C11_THREADS)
+    ADD_DEFINITIONS(-DNEED_C11_THREADS_WRAPPER)
+    IF(WIN32)
+        SET(LINK_C11_COMPAT_STATIC "${LIB_BUILD}/libmesa_c11${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    ENDIF()
+ENDIF()
+```
+
+Note that source modules may have additional dependencies, as documented in their individual README files.
+
+#### Statically linking source modules
+
+While source modules can be kept separate and loaded dynamically through `framebuffet_load_module`, they can also be directly integrated to a host.
+
+Each source module should use the `FBSOURCE_MODULE_DESCRIPTOR` macro to register itself for downstream applications, usually at the end of its main source code file. The macro exports 2 symbols:
+
+- the module's `fbsource_module_descriptor_t` with a (supposedly) unique name based on the macro's first argument
+- a well-known C string `_fbsource_module_descriptor_symbol` containing that name
+
+Dynamic loading works looks up the well-known string and registers the looked-up descriptor symbol to the framework. To link a module statically, the host just needs to be statically linked to the source module and do the same registration using a static reference at compile time:
+
+```c
+fberror_t res = framebuffet_register_module(framebuffet, _fbsource_module_descriptor__dummy);
+if (res != FBERROR_NONE) {
+    // some error handling
+    return false;
+}
+```
+
+The easiest way to find the symbol name (in this example `_fbsource_module_descriptor__dummy` for the [Dummy](fbsources/dummy) module) is by expanding the macro in an IDE.
+
 ### Framework bindings
 
 The following projects provide bindings for the framework:
