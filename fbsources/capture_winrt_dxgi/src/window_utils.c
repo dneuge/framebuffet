@@ -165,7 +165,7 @@ static BOOL list_windows_root_callback(HWND hwnd, LPARAM lParam) {
                 return CONTINUE_ENUMERATION;
             }
 
-            HWND parent_application_window = (HWND)(void*)GetWindowLongPtrA(hwnd, GWLP_HWNDPARENT);
+            HWND parent_application_window = (HWND)(void*)GetWindowLongPtrA(application_window, GWLP_HWNDPARENT);
             if (!parent_application_window || parent_application_window == application_window) {
                 break;
             }
