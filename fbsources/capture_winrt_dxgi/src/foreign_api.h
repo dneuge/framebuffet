@@ -16,6 +16,9 @@
 #define DWORD int32_t
 #define UINT uint16_t
 
+// NOTE: apparently PTR does not mean "pointer" but refers to the type being platform-/architecture-specific
+#define LONG_PTR long
+
 typedef struct {
     // NOTE: actual types are undocumented
     int top;
@@ -25,7 +28,6 @@ typedef struct {
 } RECT;
 
 #define LPRECT RECT*
-#define LONG_PTR void*
 
 typedef BOOL (*WNDENUMPROC)(HWND hwnd, LPARAM lParam);
 

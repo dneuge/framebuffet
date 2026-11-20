@@ -159,13 +159,13 @@ static BOOL list_windows_root_callback(HWND hwnd, LPARAM lParam) {
     // unblock the waiting RPC client.
     if (state->own_application) {
         HWND application_window = hwnd;
-        HINSTANCE application = GetWindowLongPtrA(application_window, GWLP_HINSTANCE);
+        HINSTANCE application = (HINSTANCE)(void*)GetWindowLongPtrA(application_window, GWLP_HINSTANCE);
         while (application_window != state->shell_window) {
             if (application == state->own_application) {
                 return CONTINUE_ENUMERATION;
             }
 
-            HWND parent_application_window = GetWindowLongPtrA(hwnd, GWLP_HWNDPARENT);
+            HWND parent_application_window = (HWND)(void*)GetWindowLongPtrA(hwnd, GWLP_HWNDPARENT);
             if (!parent_application_window || parent_application_window == application_window) {
                 break;
             }
