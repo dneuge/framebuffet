@@ -10,6 +10,8 @@
 #define LPARAM long long int
 #define LPTSTR char*
 #define HWND void*
+#define HMODULE void*
+#define HINSTANCE HMODULE
 #define HRESULT int
 #define DWORD int32_t
 #define UINT uint16_t
@@ -23,6 +25,7 @@ typedef struct {
 } RECT;
 
 #define LPRECT RECT*
+#define LONG_PTR void*
 
 typedef BOOL (*WNDENUMPROC)(HWND hwnd, LPARAM lParam);
 
@@ -36,6 +39,8 @@ static DWORD GetWindowLongW(HWND hWnd, int nIndex);
 static HWND GetAncestor(HWND hwnd, UINT gaFlags);
 static HRESULT DwmGetWindowAttribute(HWND hwnd, DWORD dwAttribute, void *pvAttribute, size_t cbAttribute);
 static BOOL GetClientRect(HWND hWnd, LPRECT lpRect);
+static HMODULE GetModuleHandleA(LPTSTR lpModuleName);
+static LONG_PTR GetWindowLongPtrA(HWND hWnd, int nIndex);
 
 // NOTE: these constants are entirely made up
 #define GA_ROOT 42
@@ -48,6 +53,8 @@ static BOOL GetClientRect(HWND hWnd, LPRECT lpRect);
 #define DWM_CLOAKED_SHELL 98765
 #define DWMWA_EXTENDED_FRAME_BOUNDS 3333
 #define S_OK 111
+#define GWLP_HINSTANCE 534
+#define GWLP_HWNDPARENT 441
 
 #define FALSE 0
 #define TRUE 1

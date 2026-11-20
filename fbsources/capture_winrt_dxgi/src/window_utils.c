@@ -33,6 +33,7 @@ typedef struct {
     window_entry_t *first_entry;
     window_entry_t *last_entry;
     HWND shell_window;
+    HMODULE own_application;
     bool failed;
 } collector_state_t;
 
@@ -151,6 +152,27 @@ static BOOL list_windows_root_callback(HWND hwnd, LPARAM lParam) {
         return STOP_ENUMERATION;
     }
 
+    // We need to avoid attempts to retrieve the window title from our own process
+    // as title retrieval apparently is an insufficiently guarded proxied RPC invocation
+    // the other process must reply to in order to unlock us. It can easily happen that
+    // our own (host) application is in a state where it won't respond and thus never
+    // unblock the waiting RPC client.
+    if (state->own_application) {
+        HWND application_window = hwnd;
+        HINSTANCE application = GetWindowLongPtrA(application_window, GWLP_HINSTANCE);
+        while (application_window != state->shell_window) {
+            if (application == state->own_application) {
+                return CONTINUE_ENUMERATION;
+            }
+
+            HWND parent_application_window = GetWindowLongPtrA(hwnd, GWLP_HWNDPARENT);
+            if (!parent_application_window || parent_application_window == application_window) {
+                break;
+            }
+            application_window = parent_application_window;
+        }
+    }
+
     window_entry_t *entry = create_window_entry(hwnd);
     if (!entry) {
         state->failed = true;
@@ -178,6 +200,7 @@ static BOOL list_windows_root_callback(HWND hwnd, LPARAM lParam) {
 window_entry_t* list_capturable_windows() {
     collector_state_t state = {0,};
     state.shell_window = GetShellWindow();
+    state.own_application = GetModuleHandleA(NULL); // request for null returns application (HINSTANCE), return value can be null on error
 
     BOOL success = EnumWindows(list_windows_root_callback, (LPARAM) &state);
     if (!success || state.failed) {
