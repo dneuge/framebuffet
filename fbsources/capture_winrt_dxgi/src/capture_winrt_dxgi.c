@@ -57,8 +57,12 @@ static bool set_now_plus_seconds(struct timespec *out, uint16_t seconds) {
 static bool find_window(fbsource_capture_winrt_dxgi_t *instance, HWND *handle, window_dimensions_t *dimensions, char *exact_name) {
     window_dimensions_t found_dimensions = {0,};
 
-    if (!(instance && handle && dimensions && exact_name)) {
-        FBLOG_WARN(instance->ext_instance_ref, "find_window: missing mandatory parameters, instance=%p, handle=%p, dimensions=%p, exact_name=%p", instance, handle, dimensions, exact_name);
+    if (!instance) {
+        return false;
+    }
+
+    if (!(handle && dimensions && exact_name)) {
+        FBLOG_WARN(instance->ext_instance_ref, "find_window: missing mandatory parameters, handle=%p, dimensions=%p, exact_name=%p", handle, dimensions, exact_name);
         return false;
     }
 
