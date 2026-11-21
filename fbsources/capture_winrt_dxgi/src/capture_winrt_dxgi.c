@@ -790,6 +790,7 @@ static fberror_t capture_winrt_dxgi_configure_module(void *data, fbcollections_m
     
     if (success) {
         instance->stop_generator = false;
+        instance->stale_frame_check_previous_token = instance->frame_token; // to detect if no frame ever arrives
 
         if (thrd_create(&instance->generator_thread, generate, instance) == thrd_success) {
             instance->has_generator_thread = true;
