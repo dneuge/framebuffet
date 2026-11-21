@@ -21,6 +21,7 @@
 
 #define NANOS_PER_MILLISECOND (1000000)
 #define CONDITIONAL_WAKEUP_INTERVAL_SECONDS (2)
+#define STALE_FRAME_TIMEOUT_SECONDS (5) /* minimum timeout between frames before reinitialization is triggered */
 
 static const struct timespec active_check_sleep = {
     .tv_sec = 0,
@@ -37,7 +38,7 @@ static const struct timespec wait_after_error = {
     .tv_nsec = 0
 };
 
-static bool set_now_plus_seconds(struct timespec *out, uint16_t seconds) {
+static bool set_now(struct timespec *out) {
     if (!out) {
         return false;
     }
@@ -48,10 +49,37 @@ static bool set_now_plus_seconds(struct timespec *out, uint16_t seconds) {
         return false;
     }
 
+    *out = now;
+
+    return true;
+}
+
+static bool set_now_plus_seconds(struct timespec *out, uint16_t seconds) {
+    if (!out) {
+        return false;
+    }
+
+    struct timespec now = {0,};
+    if (!set_now(&now)) {
+        return false;
+    }
+
     out->tv_sec = now.tv_sec + seconds;
     out->tv_nsec = now.tv_nsec;
 
     return true;
+}
+
+static bool timespec_is_greater_than(struct timespec *a, struct timespec *b) {
+    if (a->tv_sec > b->tv_sec) {
+        return true;
+    }
+
+    if (a->tv_sec < b->tv_sec) {
+        return false;
+    }
+
+    return a->tv_nsec > b->tv_nsec;
 }
 
 static bool find_window(fbsource_capture_winrt_dxgi_t *instance, HWND *handle, window_dimensions_t *dimensions, char *exact_name) {
@@ -456,6 +484,10 @@ static int generate(void *data) {
             FBLOG_DEBUG(instance->ext_instance_ref, "generator thread locked mutex");
             mutex_locked = true;
         }
+        instance->stale_frame_check_enabled = set_now_plus_seconds(&instance->stale_frame_expiration, STALE_FRAME_TIMEOUT_SECONDS);
+        if (!instance->stale_frame_check_enabled) {
+            FBLOG_WARN(instance->ext_instance_ref, "stale frame check unavailable");
+        }
         while (!instance->stop_generator) {
             if (!use_conditional_wait || !mutex_locked) {
                 if (mutex_locked) {
@@ -479,6 +511,43 @@ static int generate(void *data) {
                     } else {
                         FBLOG_WARN(instance->ext_instance_ref, "failed conditional wait, falling back to active checks");
                         use_conditional_wait = false;
+                    }
+                }
+            }
+
+            if (instance->stale_frame_check_enabled) {
+                fbsource_token_t latest_token = {0,};
+                if (mutex_locked) {
+                    latest_token = instance->frame_token;
+                } else {
+                    FBLOG_TRACE(instance->ext_instance_ref, "generator thread locking for stale frame check");
+                    if (mtx_lock(&instance->mutex) != thrd_success) {
+                        FBLOG_WARN(instance->ext_instance_ref, "stale frame check failed to lock mutex, disabling - you may want to file a bug report");
+                        instance->stale_frame_check_enabled = false;
+                    } else {
+                        latest_token = instance->frame_token;
+                        FBLOG_TRACE(instance->ext_instance_ref, "generator thread unlocking after stale frame check token copy");
+                        mtx_unlock(&instance->mutex);
+                    }
+                }
+
+                if (instance->stale_frame_check_previous_token != latest_token) {
+                    // frame changed, reset timer
+                    instance->stale_frame_check_previous_token = latest_token;
+                    if (!set_now_plus_seconds(&instance->stale_frame_expiration, STALE_FRAME_TIMEOUT_SECONDS)) {
+                        FBLOG_WARN(instance->ext_instance_ref, "stale frame check went unavailable intermittently, disabling - you may want to file a bug report");
+                        instance->stale_frame_check_enabled = false;
+                    }
+                } else {
+                    struct timespec now = {0,};
+                    if (!set_now(&now)) {
+                        FBLOG_WARN(instance->ext_instance_ref, "stale frame check failed to get current time - you may want to file a bug report");
+                        instance->stale_frame_check_enabled = false;
+                    } else if (timespec_is_greater_than(&instance->stale_frame_expiration, &now)) {
+                        FBLOG_TRACE(instance->ext_instance_ref, "stale frame check OK");
+                    } else {
+                        FBLOG_INFO(instance->ext_instance_ref, "stale frame detected; reinitializing");
+                        instance->want_reinit = true;
                     }
                 }
             }

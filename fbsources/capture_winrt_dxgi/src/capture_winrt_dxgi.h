@@ -46,6 +46,12 @@ typedef struct {
     bool want_reinit;
     bool want_abort;
 
+    fbsource_token_t stale_frame_check_previous_token;
+
+    // only handled by outer generator loop (accessed without mutex)
+    bool stale_frame_check_enabled;
+    struct timespec stale_frame_expiration;
+
     // only handled by capture session (accessed without mutex)
     unsigned char *internal_buffer;
     size_t internal_buffer_size;
