@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 [![Issue Tracking: Codeberg](https://img.shields.io/badge/issue%20tracking-codeberg-2684cf)](https://codeberg.org/dneuge/framebuffet/issues)
+[![AI Policy: restrictive](https://img.shields.io/badge/AI_policy-restrictive-yellow)](AI_USAGE_POLICY.md)
 
 <img src="docs/logo/frontpage.svg" alt="frontpage logo" width="100%" style="max-width:800px;display:block;margin-left:auto;margin-right:auto;" />
 
